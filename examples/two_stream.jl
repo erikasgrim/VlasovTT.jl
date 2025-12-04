@@ -8,14 +8,14 @@ using CUDA
 using Plots
 using ProgressBars
 
-function run_two_stream(; use_gpu::Bool = true, save_every::Int = 5)
+function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
     mkpath("figures/two_stream")
 
     dt = 1e-2
     Tfinal = 10.0
     nsteps = Int(Tfinal / dt)
 
-    R = 10
+    R = 12
 
     xmin = -10.0
     xmax = 10.0
@@ -26,8 +26,8 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 5)
 
     params = SimulationParams(
         dt = dt,
-        tolerance = 1e-8,
-        maxrank = 128,
+        tolerance = 1e-6,
+        maxrank = 16,
         k_cut = 2^6,
         beta = 2.0,
         use_gpu = use_gpu,
@@ -64,10 +64,13 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 5)
         psi_mps = cu(psi_mps)
     end
 
-    x_vals = range(phase.xmin, phase.xmax; length = 200)
-    v_vals = range(phase.vmin, phase.vmax; length = 200)
+    x_vals = range(phase.xmin, phase.xmax; length = 300)
+    v_vals = range(phase.vmin, phase.vmax; length = 300)
 
-    for step in ProgressBar(1:nsteps)
+    init_norm = norm(psi_mps)
+
+    iter = ProgressBar(1:nsteps)
+    for step in iter
         psi_mps = strang_step!(
             psi_mps,
             phase,
@@ -77,14 +80,16 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 5)
             itensor_mpos.v_inv_fourier,
             sites_mpo;
             params = params,
-            lsb_first = true,
+            target_norm=init_norm,
         )
 
         if step % save_every == 0
+            set_description(iter, "Norm ratio: $(round(norm(psi_mps) / init_norm, digits = 6))")
+
             tt_snapshot = TCI.TensorTrain(ITensors.cpu(psi_mps))
-            println("Plotting step $step, TT ranks: ", TCI.rank(tt_snapshot))
+            #println("Plotting step $step, TT ranks: ", TCI.rank(tt_snapshot))
             f_vals = [tt_snapshot(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
-            println("Max f value at step $step: ", maximum(abs.(f_vals)))
+            #println("Max f value at step $step: ", maximum(abs.(f_vals)))
             Plots.savefig(
                 Plots.heatmap(
                     x_vals,

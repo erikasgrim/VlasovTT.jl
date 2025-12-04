@@ -17,7 +17,7 @@ function strang_step!(
     v_inv_fourier_mpo_it::MPO,
     sites_mpo;
     params::SimulationParams,
-    lsb_first::Bool = true,
+    target_norm::Union{Real,Nothing}=nothing,
 )
     electric_field_mps = get_electric_field_mps(
         psi_mps,
@@ -36,7 +36,7 @@ function strang_step!(
         phase.kv_grid,
         TCI.TensorTrain(electric_field_mps);
         tolerance = params.tolerance,
-        lsb_first = lsb_first,
+        lsb_first = true,
         k_cut = params.k_cut,
         beta = params.beta,
     )
@@ -68,7 +68,7 @@ function strang_step!(
         phase.kv_grid,
         TCI.TensorTrain(electric_field_mps);
         tolerance = params.tolerance,
-        lsb_first = lsb_first,
+        lsb_first = true,
         k_cut = params.k_cut,
         beta = params.beta,
     )
@@ -80,6 +80,11 @@ function strang_step!(
     psi_mps = apply(v_fourier_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
     psi_mps = apply(accel_mpo_half_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
     psi_mps = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
+
+    if target_norm !== nothing
+        current_norm = norm(psi_mps)
+        psi_mps .= (target_norm / current_norm) * psi_mps
+    end
 
     return psi_mps
 end
