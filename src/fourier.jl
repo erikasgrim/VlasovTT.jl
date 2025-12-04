@@ -51,7 +51,7 @@ function stretched_fourier_mpo(R::Int, target_dim::Int, total_dim::Int=2; sign::
 end
 
 function quanticsfouriermpo_multidim(R::Int, total_dim::Int=2; sign::Real=-1.0, algorithm=:TCI, tolerance::Real=1e-12, lsb_first::Bool=false)
-    mpo_list = Vector{TensorTrain}(undef, total_dim)
+    mpo_list = Vector{TCI.TensorTrain}(undef, total_dim)
     for dim in 1:total_dim
         mpo_list[dim] = stretched_fourier_mpo(R, dim, total_dim; sign=sign, lsb_first=lsb_first)
     end

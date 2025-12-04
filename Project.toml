@@ -1,3 +1,7 @@
+name = "VlasovTT"
+uuid = "fd69607e-dff2-4fde-869b-4f0482a672e0"
+version = "0.1.0"
+
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 ITensorMPS = "0d1a4710-d33b-49a5-8f18-73bdf49b47e2"
