@@ -8,31 +8,70 @@ using CUDA
 using Plots
 using ProgressBars
 
-function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
-    mkpath("figures/two_stream")
+function write_parameters(params::SimulationParams, phase, directory::String)
+    mkpath(directory)
+    open(joinpath(directory, "simulation_params.txt"), "w") do io
+        println(io, "Simulation Parameters:")
+        println(io, "dt = $(params.dt)")
+        println(io, "tolerance = $(params.tolerance)")
+        println(io, "maxrank = $(params.maxrank)")
+        println(io, "k_cut = $(params.k_cut)")
+        println(io, "beta = $(params.beta)")
+        println(io, "Grid Parameters:")
+        println(io, "R = $(phase.R)")
+        println(io, "xmin = $(phase.xmin)")
+        println(io, "xmax = $(phase.xmax)")
+        println(io, "vmin = $(phase.vmin)")
+        println(io, "vmax = $(phase.vmax)")
+    end
+end
 
+function write_data(step::Int, time::Real, charge::Real, ef_energy::Real, directory::String)
+    filepath = joinpath(directory, "data.csv")
+    needs_header = !isfile(filepath) || filesize(filepath) == 0
+    open(filepath, "a") do io
+        if needs_header
+            println(io, "step,time,charge,ef_energy")
+        end
+        println(io, "$(step),$(time),$(charge),$(ef_energy)")
+    end
+end
+
+function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
+    
     dt = 1e-2
     Tfinal = 10.0
     nsteps = Int(Tfinal / dt)
 
-    R = 12
+    R = 14
 
     xmin = -10.0
     xmax = 10.0
     vmin = -6.0
     vmax = 6.0
 
+    tolerance = 1e-8
+    maxrank = 32
+    k_cut = 2^8
+    beta = 2.0
+
     phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
 
     params = SimulationParams(
         dt = dt,
-        tolerance = 1e-6,
-        maxrank = 16,
-        k_cut = 2^6,
-        beta = 2.0,
+        tolerance = tolerance,
+        maxrank = maxrank,
+        k_cut = k_cut,
+        beta = beta,
         use_gpu = use_gpu,
         alg = "naive",
     )
+
+    simulation_name = "two_stream"
+    simulation_dir = joinpath("results", simulation_name)
+    figure_dir = joinpath(simulation_dir, "figures")
+    mkpath(figure_dir)
+    write_parameters(params, phase, simulation_dir)
 
     solver_mpos = build_solver_mpos(
         phase;
@@ -68,10 +107,16 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
     v_vals = range(phase.vmin, phase.vmax; length = 300)
 
     init_norm = norm(psi_mps)
+    init_charge = total_charge(psi_mps, phase)
+    init_ke = kinetic_energy(psi_mps, phase)
+    println("Initial norm: $init_norm")
+    println("Initial total charge: $init_charge")
+    println("Initial kinetic energy: $init_ke")
+    write_data(0, 0.0, init_charge, 0.0, simulation_dir)
 
     iter = ProgressBar(1:nsteps)
     for step in iter
-        psi_mps = strang_step!(
+        psi_mps, ef_mps = strang_step!(
             psi_mps,
             phase,
             solver_mpos.full_poisson_mpo,
@@ -80,12 +125,20 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
             itensor_mpos.v_inv_fourier,
             sites_mpo;
             params = params,
-            target_norm=init_norm,
+            return_field = true,
         )
 
         if step % save_every == 0
             set_description(iter, "Norm ratio: $(round(norm(psi_mps) / init_norm, digits = 6))")
-
+            n_digits = 4
+            write_data(
+                step, 
+                round(step * params.dt, digits=n_digits), 
+                round(real(total_charge(psi_mps, phase)), digits=n_digits),
+                round(real(electric_field_energy(ef_mps, phase)), digits=n_digits),
+                simulation_dir
+            )
+            
             tt_snapshot = TCI.TensorTrain(ITensors.cpu(psi_mps))
             #println("Plotting step $step, TT ranks: ", TCI.rank(tt_snapshot))
             f_vals = [tt_snapshot(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
@@ -99,7 +152,7 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
                     ylabel = "v",
                     title = "t = $(round(step * params.dt, digits = 3))",
                 ),
-                "figures/two_stream/phase_space_step$(step).png",
+                "results/$simulation_name/figures/phase_space_step$(step).png",
             )
         end
     end
