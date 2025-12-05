@@ -53,7 +53,7 @@ function get_acceleration_mpo(
         E_val = electric_field_tt(q_x)
 
         phase = -E_val * kv_phys * dt
-        return (1 + 1im * phase - 0.5 * phase^2)
+        return (1 + 1im * phase - 0.5 * phase^2) * Theta(n_v; beta = beta, k_cut = k_cut)
     end
 
     tci, _, _ = TCI.crossinterpolate2(
@@ -62,6 +62,7 @@ function get_acceleration_mpo(
         localdims,
         initial_pivots;
         tolerance = tolerance,
+        pivotsearch = :rook
     )
     U_tt = TCI.TensorTrain(tci)
 
