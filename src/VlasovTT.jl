@@ -17,6 +17,7 @@ include("operators/poisson.jl")
 include("initial_conditions.jl")
 include("steppers/strang.jl")
 include("solver.jl")
+include("observables.jl")
 
 export
     k_to_n,
@@ -43,6 +44,13 @@ export
     strang_step!,
     SolverMPOs,
     build_solver_mpos,
-    prepare_itensor_mpos
+    prepare_itensor_mpos,
+    electric_field_energy,
+    total_charge,
+    kinetic_energy,
+    ObservablesCache,
+    build_observables_cache,
+    PoissonCache,
+    build_poisson_cache
 
 end
