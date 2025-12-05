@@ -12,13 +12,14 @@ struct SolverMPOs
 end
 
 function build_fourier_mpos(R::Int; tolerance::Real = 1e-8, lsb_first::Bool = false)
-    x_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = -1.0, tolerance = tolerance)
-    v_fourier_mpo = stretched_fourier_mpo(R, 2, 2; sign = -1.0, tolerance = tolerance)
-    x_inv_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = 1.0, tolerance = tolerance, lsb_first = true)
-    v_inv_fourier_mpo = stretched_fourier_mpo(R, 2, 2; sign = 1.0, tolerance = tolerance, lsb_first = true)
+    fourier_tol = 1e-10
+    x_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = -1.0, tolerance = fourier_tol)
+    v_fourier_mpo = stretched_fourier_mpo(R, 2, 2; sign = -1.0, tolerance = fourier_tol)
+    x_inv_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = 1.0, tolerance = fourier_tol, lsb_first = true)
+    v_inv_fourier_mpo = stretched_fourier_mpo(R, 2, 2; sign = 1.0, tolerance = fourier_tol, lsb_first = true)
 
-    fourier_mpo = quanticsfouriermpo(R; sign = -1.0, tolerance = tolerance)
-    inv_fourier_mpo = quanticsfouriermpo(R; sign = 1.0, tolerance = tolerance)
+    fourier_mpo = quanticsfouriermpo(R; sign = -1.0, tolerance = fourier_tol)
+    inv_fourier_mpo = quanticsfouriermpo(R; sign = 1.0, tolerance = fourier_tol)
 
     return (
         x_fourier_mpo = x_fourier_mpo,
