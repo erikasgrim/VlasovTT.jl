@@ -18,7 +18,9 @@ function strang_step!(
     sites_mpo;
     params::SimulationParams,
     target_norm::Union{Real,Nothing}=nothing,
+    accel_cache::Union{AccelerationTCICache,Nothing}=nothing,
     return_field::Bool=false,
+    reuse_strategy::Symbol=:resweep,
 )
     electric_field_mps = get_electric_field_mps(
         psi_mps,
@@ -29,7 +31,7 @@ function strang_step!(
         alg = params.alg,
     )
 
-    @time accel_mpo_half = get_acceleration_mpo(
+    accel_mpo_half = get_acceleration_mpo(
         params.dt / 2,
         phase.Lv,
         phase.M,
@@ -40,6 +42,8 @@ function strang_step!(
         lsb_first = true,
         k_cut = params.k_cut,
         beta = params.beta,
+        accel_cache = accel_cache,
+        reuse_strategy = reuse_strategy,
     )
     accel_mpo_half_it = MPO(accel_mpo_half; sites = sites_mpo)
     if params.use_gpu
@@ -50,7 +54,7 @@ function strang_step!(
     psi_mps = apply(accel_mpo_half_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
     psi_mps = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
 
-    @time psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
+    psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
 
     electric_field_mps = get_electric_field_mps(
         psi_mps,
@@ -72,6 +76,8 @@ function strang_step!(
         lsb_first = true,
         k_cut = params.k_cut,
         beta = params.beta,
+        accel_cache = accel_cache,
+        reuse_strategy = reuse_strategy,
     )
     accel_mpo_half_it = MPO(accel_mpo_half; sites = sites_mpo)
     if params.use_gpu
@@ -83,8 +89,8 @@ function strang_step!(
     psi_mps = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
 
     if target_norm !== nothing
-        current_norm = norm(psi_mps)
-        psi_mps .= (target_norm / current_norm) * psi_mps
+        current_l1 = total_charge(psi_mps, phase)
+        psi_mps .= (target_norm / current_l1) * psi_mps
     end
 
     return return_field ? (psi_mps, electric_field_mps) : psi_mps
