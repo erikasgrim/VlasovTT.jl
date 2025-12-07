@@ -1,3 +1,8 @@
+mutable struct AccelerationTCICache
+    tci::Union{Nothing,TCI.TensorCI2{ComplexF64}}
+end
+AccelerationTCICache() = AccelerationTCICache(nothing)
+
 function acceleration_pivots(x_grid, kv_grid, Mv; lsb_first::Bool = false)
     R = length(x_grid)
 
@@ -33,6 +38,8 @@ function get_acceleration_mpo(
     k_cut::Real = 2^8,
     beta::Real = 2.0,
     lsb_first::Bool = false,
+    accel_cache::Union{Nothing,AccelerationTCICache}=nothing,
+    reuse_strategy::Symbol=:resweep,
 )
     R = length(x_grid)
     @assert length(kv_grid) == R
@@ -56,15 +63,103 @@ function get_acceleration_mpo(
         return (1 + 1im * phase - 0.5 * phase^2) * Theta(n_v; beta = beta, k_cut = k_cut)
     end
 
-    tci, _, _ = TCI.crossinterpolate2(
-        ComplexF64,
-        kernel,
+    cached_kernel = TCI.CachedFunction{ComplexF64}(kernel, localdims)
+
+    tci = build_acceleration_tci!(
+        accel_cache,
+        cached_kernel,
         localdims,
         initial_pivots;
         tolerance = tolerance,
-        pivotsearch = :rook
+        pivotsearch = :rook,
+        reuse_strategy = reuse_strategy,
     )
     U_tt = TCI.TensorTrain(tci)
 
     return tt_to_mpo(U_tt)
+end
+
+function collect_final_pivots(tci::TCI.TensorCI2)
+    n = length(tci)
+    for b in 1:n-1
+        if length(tci.Iset[b+1]) == length(tci.Jset[b])
+            return [vcat(tci.Iset[b+1][k], tci.Jset[b][k]) for k in eachindex(tci.Jset[b])]
+        end
+    end
+    error("Could not reconstruct pivot set from TCI.")
+end
+
+function resweep_acceleration_tci!(
+    tci::TCI.TensorCI2{ComplexF64},
+    kernel;
+    tolerance::Real,
+    pivotsearch::Symbol,
+)
+    pivots = collect_final_pivots(tci)
+    if !isempty(pivots)
+        maxsample = maximum(abs, (kernel(p) for p in pivots))
+        tci.maxsamplevalue = max(maxsample, eps())
+    else
+        tci.maxsamplevalue = 1.0
+    end
+    TCI.optimize!(
+        tci,
+        kernel;
+        tolerance = tolerance,
+        maxbonddim = typemax(Int),
+        maxiter = 50,
+        pivotsearch = pivotsearch,
+        sweepstrategy = :backandforth,
+        maxnglobalpivot = 0,
+        nsearchglobalpivot = 0,
+        normalizeerror = false,
+        strictlynested = false,
+    )
+    return tci
+end
+
+function build_acceleration_tci!(
+    accel_cache::Union{Nothing,AccelerationTCICache},
+    kernel,
+    localdims,
+    initial_pivots;
+    tolerance::Real,
+    pivotsearch::Symbol,
+    reuse_strategy::Symbol,
+)
+    existing_tci = accel_cache === nothing ? nothing : accel_cache.tci
+
+    tci = if reuse_strategy == :resweep && existing_tci !== nothing
+        resweep_acceleration_tci!(
+            existing_tci,
+            kernel;
+            tolerance = tolerance,
+            pivotsearch = pivotsearch,
+        )
+    elseif reuse_strategy == :reuse_pivots && existing_tci !== nothing
+        pivots = collect_final_pivots(existing_tci)
+        TCI.crossinterpolate2(
+            ComplexF64,
+            kernel,
+            localdims,
+            pivots;
+            tolerance = tolerance,
+            pivotsearch = pivotsearch,
+        )[1]
+    else
+        TCI.crossinterpolate2(
+            ComplexF64,
+            kernel,
+            localdims,
+            initial_pivots;
+            tolerance = tolerance,
+            pivotsearch = pivotsearch,
+        )[1]
+    end
+
+    if accel_cache !== nothing
+        accel_cache.tci = tci
+    end
+
+    return tci
 end
