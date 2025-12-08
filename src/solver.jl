@@ -5,7 +5,7 @@ struct SolverMPOs
     v_inv_fourier_mpo::TCI.TensorTrain
     fourier_mpo::TCI.TensorTrain
     inv_fourier_mpo::TCI.TensorTrain
-    free_streaming_mpo::TCI.TensorTrain
+    half_free_streaming_mpo::TCI.TensorTrain
     full_free_streaming_mpo::TCI.TensorTrain
     poisson_mpo::TCI.TensorTrain
     full_poisson_mpo::TCI.TensorTrain
@@ -42,7 +42,7 @@ function build_solver_mpos(
 )
     fourier = build_fourier_mpos(phase.R; tolerance = tolerance, lsb_first = lsb_first)
 
-    free_streaming_mpo = get_free_streaming_mpo(
+    full_free_streaming_mpo_fourier = get_free_streaming_mpo(
         dt,
         phase.Lx,
         phase.M,
@@ -57,7 +57,31 @@ function build_solver_mpos(
     full_free_streaming_mpo = TCI.contract(
         fourier.x_inv_fourier_mpo,
         TCI.contract(
-            free_streaming_mpo,
+            full_free_streaming_mpo_fourier,
+            fourier.x_fourier_mpo;
+            algorithm = :naive,
+            tolerance = tolerance,
+        );
+        algorithm = :naive,
+        tolerance = tolerance,
+    )
+
+    half_free_streaming_mpo_fourier = get_free_streaming_mpo(
+        dt / 2,
+        phase.Lx,
+        phase.M,
+        phase.kx_grid,
+        phase.v_grid;
+        tolerance = tolerance,
+        k_cut = k_cut,
+        beta = beta,
+        lsb_first = lsb_first,
+    )
+
+    half_free_streaming_mpo = TCI.contract(
+        fourier.x_inv_fourier_mpo,
+        TCI.contract(
+            half_free_streaming_mpo_fourier,
             fourier.x_fourier_mpo;
             algorithm = :naive,
             tolerance = tolerance,
@@ -93,7 +117,7 @@ function build_solver_mpos(
         fourier.v_inv_fourier_mpo,
         fourier.fourier_mpo,
         fourier.inv_fourier_mpo,
-        free_streaming_mpo,
+        half_free_streaming_mpo,
         full_free_streaming_mpo,
         poisson_mpo,
         full_poisson_mpo,
@@ -105,18 +129,21 @@ function prepare_itensor_mpos(
     sites_mpo;
     use_gpu::Bool = false,
 )
-    free_stream_mpo_it = MPO(mpos.full_free_streaming_mpo; sites = sites_mpo)
+    full_free_stream_mpo_it = MPO(mpos.full_free_streaming_mpo; sites = sites_mpo)
+    half_free_stream_mpo_it = MPO(mpos.half_free_streaming_mpo; sites = sites_mpo)
     v_fourier_mpo_it = MPO(mpos.v_fourier_mpo; sites = sites_mpo)
     v_inv_fourier_mpo_it = MPO(mpos.v_inv_fourier_mpo; sites = sites_mpo)
 
     if use_gpu
-        free_stream_mpo_it = cu(free_stream_mpo_it)
+        full_free_stream_mpo_it = cu(full_free_stream_mpo_it)
+        half_free_stream_mpo_it = cu(half_free_stream_mpo_it)
         v_fourier_mpo_it = cu(v_fourier_mpo_it)
         v_inv_fourier_mpo_it = cu(v_inv_fourier_mpo_it)
     end
 
     return (
-        free_stream = free_stream_mpo_it,
+        full_free_stream = full_free_stream_mpo_it,
+        half_free_stream = half_free_stream_mpo_it,
         v_fourier = v_fourier_mpo_it,
         v_inv_fourier = v_inv_fourier_mpo_it,
     )
