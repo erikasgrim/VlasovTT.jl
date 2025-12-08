@@ -9,6 +9,7 @@ struct SolverMPOs
     full_free_streaming_mpo::TCI.TensorTrain
     poisson_mpo::TCI.TensorTrain
     full_poisson_mpo::TCI.TensorTrain
+    stretched_kv_mpo::TCI.TensorTrain
 end
 
 function build_fourier_mpos(R::Int; tolerance::Real = 1e-8, lsb_first::Bool = false)
@@ -110,6 +111,15 @@ function build_solver_mpos(
         tolerance = tolerance,
     )
 
+    kv_mpo = build_kv_tt(
+        phase.Lv, 
+        phase.M, 
+        phase.kv_grid; 
+        tolerance = tolerance
+    )
+
+    stretched_kv_mpo = stretched_mpo(kv_mpo, 2, 2)
+
     return SolverMPOs(
         fourier.x_fourier_mpo,
         fourier.v_fourier_mpo,
@@ -121,6 +131,7 @@ function build_solver_mpos(
         full_free_streaming_mpo,
         poisson_mpo,
         full_poisson_mpo,
+        stretched_kv_mpo,
     )
 end
 
@@ -133,12 +144,14 @@ function prepare_itensor_mpos(
     half_free_stream_mpo_it = MPO(mpos.half_free_streaming_mpo; sites = sites_mpo)
     v_fourier_mpo_it = MPO(mpos.v_fourier_mpo; sites = sites_mpo)
     v_inv_fourier_mpo_it = MPO(mpos.v_inv_fourier_mpo; sites = sites_mpo)
+    stretched_kv_mpo_it = MPO(mpos.stretched_kv_mpo; sites = sites_mpo)
 
     if use_gpu
         full_free_stream_mpo_it = cu(full_free_stream_mpo_it)
         half_free_stream_mpo_it = cu(half_free_stream_mpo_it)
         v_fourier_mpo_it = cu(v_fourier_mpo_it)
         v_inv_fourier_mpo_it = cu(v_inv_fourier_mpo_it)
+        stretched_kv_mpo_it = cu(stretched_kv_mpo_it)
     end
 
     return (
@@ -146,5 +159,6 @@ function prepare_itensor_mpos(
         half_free_stream = half_free_stream_mpo_it,
         v_fourier = v_fourier_mpo_it,
         v_inv_fourier = v_inv_fourier_mpo_it,
+        stretched_kv = stretched_kv_mpo_it,
     )
 end

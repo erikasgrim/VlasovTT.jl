@@ -1,14 +1,19 @@
+using Revise
 using VlasovTT
+
 using QuanticsGrids
 using QuanticsTCI
 import TensorCrossInterpolation as TCI
+
 using ITensorMPS
 using ITensors
+
 using CUDA
+
 using Plots
 using ProgressBars
 
-function write_parameters(params::SimulationParams, phase, directory::String)
+function write_parameters(params::VlasovTT.SimulationParams, phase, directory::String)
     mkpath(directory)
     open(joinpath(directory, "simulation_params.txt"), "w") do io
         println(io, "Simulation Parameters:")
@@ -37,27 +42,27 @@ function write_data(step::Int, time::Real, charge::Real, ef_energy::Real, k_ener
     end
 end
 
-function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
+function run_two_stream(; use_gpu::Bool = true, save_every::Int = 20)
     
-    dt = 1e-3
-    Tfinal = 20.0
+    # Simulation parameters
+    dt = .01
+    Tfinal = 50.0
     nsteps = Int(Tfinal / dt)
-
+ 
     R = 8
 
-    xmin = -10.0
-    xmax = 10.0
-    vmin = -6.0
-    vmax = 6.0
+    xmin = -5.0
+    xmax = 5.0
+    vmin = -2.0
+    vmax = 2.0
 
-    tolerance = 1e-9
-    maxrank = 64
-    k_cut = 2^8
+    tolerance = 1e-8
+    maxrank = 32
+    k_cut = 2^9
     beta = 0.0
 
     phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
-
-    params = SimulationParams(
+    params = VlasovTT.SimulationParams(
         dt = dt,
         tolerance = tolerance,
         maxrank = maxrank,
@@ -67,6 +72,7 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
         alg = "naive",
     )
 
+    # Set up directories
     simulation_name = "two_stream"
     simulation_dir = joinpath("results", simulation_name)
     figure_dir = joinpath(simulation_dir, "figures")
@@ -77,6 +83,7 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
     mkpath(figure_dir)
     write_parameters(params, phase, simulation_dir)
 
+    # Build solver MPOs
     solver_mpos = build_solver_mpos(
         phase;
         dt = params.dt,
@@ -89,10 +96,11 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
     println("Full free streaming MPO ranks: ", TCI.rank(solver_mpos.full_free_streaming_mpo))
     println("Full Poisson MPO ranks: ", TCI.rank(solver_mpos.full_poisson_mpo))
 
-    ic_fn = two_stream_instability_ic(phase; A = 0.1, v0 = 1.0, vt = 0.3, mode = 3)
+    # Build initial condition
+    ic_fn = two_stream_instability_ic(phase; A = 0.1, v0 = .5, vt = 0.2, mode = 3)
+    #ic_fn = gaussian_ic(phase; x0 = 0.0, sigma_x = 1.0, v0 = 0.0, sigma_v = 1.0)
     tt, interp_rank, interp_error = build_initial_tt(ic_fn, R; tolerance = params.tolerance)
     println("Initial condition TT ranks: ", TCI.rank(tt))
-
 
     psi_mps = MPS(tt)
     sites_mps = siteinds(psi_mps)
@@ -119,23 +127,25 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
     println("Initial kinetic energy: $init_ke")
     write_data(0, 0.0, init_charge, 0.0, init_ke, simulation_dir)
 
-    accel_cache = AccelerationTCICache()
     observables_cache = build_observables_cache(psi_mps, phase)
+
+    # Half step in free streaming
+    psi_mps = apply(itensor_mpos.half_free_stream, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
+
     iter = ProgressBar(1:nsteps)
     for step in iter
-        psi_mps, ef_mps = strang_step!(
+        psi_mps, ef_mps = strang_step_v3!(
             psi_mps,
             phase,
             solver_mpos.full_poisson_mpo,
-            itensor_mpos.free_stream,
+            itensor_mpos.full_free_stream,
             itensor_mpos.v_fourier,
             itensor_mpos.v_inv_fourier,
+            itensor_mpos.stretched_kv,
             sites_mpo;
             params = params,
-            accel_cache = accel_cache,
-            return_field = true,
             target_norm = init_charge,
-            reuse_strategy = :resweep,
+            return_field = true,
         )
 
         if step % save_every == 0
@@ -151,9 +161,7 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
             )
             
             tt_snapshot = TCI.TensorTrain(ITensors.cpu(psi_mps))
-            #println("Plotting step $step, TT ranks: ", TCI.rank(tt_snapshot))
             f_vals = [tt_snapshot(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
-            #println("Max f value at step $step: ", maximum(abs.(f_vals)))
             Plots.savefig(
                 Plots.heatmap(
                     x_vals,
@@ -165,8 +173,24 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
                 ),
                 "results/$simulation_name/figures/phase_space_step$(step).png",
             )
+
+            ef_snapshot = TCI.TensorTrain(ITensors.cpu(ef_mps))
+            E_x_vals = [real.(ef_snapshot(origcoord_to_quantics(phase.x_grid, x))) for x in x_vals]
+            Plots.savefig(
+                Plots.plot(
+                    x_vals,
+                    E_x_vals;
+                    xlabel = "x",
+                    ylabel = "E(x)",
+                    title = "Electric Field at t = $(round(step * params.dt, digits = 3))",
+                    ylim = (-0.1, 0.1),
+                ),
+                "results/$simulation_name/figures/electric_field_step$(step).png",
+            )
         end
     end
+
+    # TODO: Full step in acceleration followed by half step in free streaming
 
     return psi_mps
 end

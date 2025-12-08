@@ -50,6 +50,53 @@ function stretched_fourier_mpo(R::Int, target_dim::Int, total_dim::Int=2; sign::
     return TCI.TensorTrain(mpo_cores)
 end
 
+function stretched_mpo(mpo::TCI.TensorTrain, target_dim::Int, total_dim::Int=2)
+    R = TCI.length(mpo)
+    R_total = R * total_dim
+
+    entry_type = eltype(mpo[1])
+    mpo_cores = Vector{Array{entry_type,4}}(undef, R_total)
+
+    fourier_core_sites = [target_dim + n * total_dim for n in 0:(R-1)]
+
+    for site in 1:R_total
+        if site in fourier_core_sites
+            mpo_site_1d = div(site - target_dim, total_dim) + 1
+            mpo_core = mpo[mpo_site_1d]
+
+        else
+            if site == 1
+                left_dim = 1
+                right_dim = 1
+
+                mpo_core = zeros(entry_type, left_dim, 2, 2, right_dim)
+                mpo_core[1, 1, 1, 1] = 1.0
+                mpo_core[1, 2, 2, 1] = 1.0
+
+            elseif site == R_total
+                left_dim = size(mpo_cores[site-1], 4)
+                right_dim = 1
+                mpo_core = zeros(entry_type, left_dim, 2, 2, right_dim)
+                for chi in 1:left_dim
+                    mpo_core[chi, 1, 1, 1] = 1.0
+                    mpo_core[chi, 2, 2, 1] = 1.0
+                end
+
+            else
+                bond_dim = size(mpo_cores[site-1], 4)
+                mpo_core = zeros(entry_type, bond_dim, 2, 2, bond_dim)
+                for chi in 1:bond_dim
+                    mpo_core[chi, 1, 1, chi] = 1.0
+                    mpo_core[chi, 2, 2, chi] = 1.0
+                end
+            end
+        end
+        mpo_cores[site] = mpo_core
+    end
+
+    return TCI.TensorTrain(mpo_cores)
+end
+
 function quanticsfouriermpo_multidim(R::Int, total_dim::Int=2; sign::Real=-1.0, algorithm=:TCI, tolerance::Real=1e-12, lsb_first::Bool=false)
     mpo_list = Vector{TCI.TensorTrain}(undef, total_dim)
     for dim in 1:total_dim
