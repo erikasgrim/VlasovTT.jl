@@ -9,7 +9,7 @@ function interleave_bits(q_first::AbstractVector{Int}, q_second::AbstractVector{
     return q
 end
 
-function Theta(n; beta::Real = 2.0, k_cut::Real = 2^8)
+function frequency_filter(n; beta::Real = 2.0, k_cut::Real = 2^8)
     return 1 / (exp((abs(n) - k_cut) * beta) + 1)
 end
 
