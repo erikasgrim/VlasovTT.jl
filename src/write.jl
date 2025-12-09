@@ -4,6 +4,7 @@ function write_parameters(params::VlasovTT.SimulationParams, phase, directory::S
         println(io, "Simulation Parameters:")
         println(io, "dt = $(params.dt)")
         println(io, "tolerance = $(params.tolerance)")
+        println(io, "SVD_tolerance = $(params.cutoff)")
         println(io, "maxrank = $(params.maxrank)")
         println(io, "k_cut = $(params.k_cut)")
         println(io, "beta = $(params.beta)")

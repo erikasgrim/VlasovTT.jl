@@ -1,6 +1,7 @@
 Base.@kwdef struct SimulationParams
     dt::Float64
     tolerance::Float64 = 1e-8
+    cutoff::Float64 = 1e-8
     maxrank::Union{Int,Nothing} = nothing
     k_cut::Real = 2^6
     beta::Real = 2.0
@@ -197,6 +198,7 @@ function strang_step_v3!(
     v_fourier_mpo_it::MPO,
     v_inv_fourier_mpo_it::MPO,
     stretched_kv_mpo_it::MPO,
+    #mixed_basis_free_stream_mpo_it::MPO,
     sites_mpo;
     params::SimulationParams,
     target_norm::Union{Real,Nothing}=nothing,
@@ -222,30 +224,30 @@ function strang_step_v3!(
     end
 
     # Fourier transform in v
-    psi_hat = apply(v_fourier_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
+    psi_hat = apply(v_fourier_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
 
     B = 1im * apply(stretched_electric_field_mpo_it, stretched_kv_mpo_it)
     dt = params.dt
 
     # RK4 update
-    k1 = apply(B, psi_hat; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
+    k1 = apply(B, psi_hat; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
     psi_tmp = psi_hat + (dt/2) * k1
 
-    k2 = apply(B, psi_tmp; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
+    k2 = apply(B, psi_tmp; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
     psi_tmp = psi_hat + (dt/2) * k2
 
-    k3 = apply(B, psi_tmp; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
+    k3 = apply(B, psi_tmp; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
     psi_tmp = psi_hat + dt * k3
 
-    k4 = apply(B, psi_tmp; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
+    k4 = apply(B, psi_tmp; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
 
     psi_hat_evolved = psi_hat + (dt / 6) * (k1 + 2k2 + 2k3 + k4)
     
     # Inverse Fourier transform in v
-    psi_mps = apply(v_inv_fourier_mpo_it, psi_hat_evolved; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
+    psi_mps = apply(v_inv_fourier_mpo_it, psi_hat_evolved; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
 
     # Free streaming step
-    psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
+    psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
 
     # Normalize according to L1 norm
     if target_norm !== nothing
