@@ -198,7 +198,6 @@ function strang_step_v3!(
     v_fourier_mpo_it::MPO,
     v_inv_fourier_mpo_it::MPO,
     stretched_kv_mpo_it::MPO,
-    #mixed_basis_free_stream_mpo_it::MPO,
     sites_mpo;
     params::SimulationParams,
     target_norm::Union{Real,Nothing}=nothing,
@@ -210,7 +209,7 @@ function strang_step_v3!(
         psi_mps,
         full_poisson_mpo;
         dv = phase.dv,
-        tolerance = params.tolerance,
+        cutoff = params.cutoff,
         maxrank = params.maxrank,
         alg = params.alg,
     )
@@ -226,22 +225,25 @@ function strang_step_v3!(
     # Fourier transform in v
     psi_hat = apply(v_fourier_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
 
-    B = 1im * apply(stretched_electric_field_mpo_it, stretched_kv_mpo_it)
+    B = 1im * apply(stretched_electric_field_mpo_it, stretched_kv_mpo_it; alg = "naive")
     dt = params.dt
 
     # RK4 update
-    k1 = apply(B, psi_hat; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
-    psi_tmp = psi_hat + (dt/2) * k1
+    k1 = apply(B, psi_hat; alg = "naive")
+    #psi_tmp = psi_hat + (dt/2) * k1
+    psi_tmp = truncate!(psi_hat + (dt/2) * k1; maxdim = params.maxrank, cutoff = params.cutoff)
 
-    k2 = apply(B, psi_tmp; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
-    psi_tmp = psi_hat + (dt/2) * k2
+    k2 = apply(B, psi_tmp; alg = "naive")
+    #psi_tmp = psi_hat + (dt/2) * k2
+    psi_tmp = truncate!(psi_hat + (dt/2) * k2; maxdim = params.maxrank, cutoff = params.cutoff)
 
-    k3 = apply(B, psi_tmp; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
-    psi_tmp = psi_hat + dt * k3
+    k3 = apply(B, psi_tmp; alg = "naive")
+    #psi_tmp = psi_hat + dt * k3
+    psi_tmp = truncate!(psi_hat + dt * k3; maxdim = params.maxrank, cutoff = params.cutoff)
 
-    k4 = apply(B, psi_tmp; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
+    k4 = apply(B, psi_tmp; alg = "naive")
 
-    psi_hat_evolved = psi_hat + (dt / 6) * (k1 + 2k2 + 2k3 + k4)
+    psi_hat_evolved = truncate!(psi_hat + (dt / 6) * (k1 + 2k2 + 2k3 + k4); maxdim = params.maxrank, cutoff = params.cutoff)
     
     # Inverse Fourier transform in v
     psi_mps = apply(v_inv_fourier_mpo_it, psi_hat_evolved; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.cutoff)
