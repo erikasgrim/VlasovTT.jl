@@ -32,6 +32,24 @@ function build_fourier_mpos(R::Int; tolerance::Real = 1e-8, lsb_first::Bool = fa
     )
 end
 
+function build_kv_tt(Lv, M, kv_grid; tolerance::Real = 1e-12)
+    function kv_kernel(kv)
+        q_bits_normal = origcoord_to_quantics(kv_grid, kv)
+        q_bits_reversed = reverse(q_bits_normal)
+        kv_reversed = quantics_to_origcoord(kv_grid, q_bits_reversed)
+
+        return 2pi * k_to_n(kv_reversed, M) / Lv #* Theta(k_to_n(kv_reversed, M); k_cut = 2^14, beta = 2.0)
+    end
+
+    qtci, _, _ = quanticscrossinterpolate(
+        Float64,
+        kv_kernel,
+        kv_grid;
+        tolerance = tolerance,
+    )
+    return tt_to_mpo(TCI.TensorTrain(qtci.tci))
+end
+
 function build_solver_mpos(
     phase::PhaseSpaceGrids;
     dt::Real,
