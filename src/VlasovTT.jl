@@ -26,7 +26,7 @@ export
     tt_to_mpo,
     build_kv_tt,
     interleave_bits,
-    Theta,
+    frequency_filter,
     PhaseSpaceGrids,
     stretched_fourier_mpo,
     stretched_mpo,
