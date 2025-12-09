@@ -48,8 +48,8 @@ function get_free_streaming_mpo(
 
         n_x = k_to_n(kx_orig, Mx)
         kx_phys = 2π * n_x / Lx
-
-        return exp(-1im * kx_phys * v_orig * dt) * Theta(n_x; beta = beta, k_cut = k_cut)
+        
+        return exp(-1im * kx_phys * v_orig * dt) * frequency_filter(n_x; beta = beta, k_cut = k_cut)
     end
 
     tci, _, _ = TCI.crossinterpolate2(
@@ -60,7 +60,6 @@ function get_free_streaming_mpo(
         tolerance = tolerance,
     )
     U_tt = TCI.TensorTrain(tci)
-    println("Free streaming MPO ranks: ", TCI.rank(U_tt))
 
     return tt_to_mpo(U_tt)
 end
