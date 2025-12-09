@@ -18,6 +18,7 @@ include("initial_conditions.jl")
 include("steppers/strang.jl")
 include("solver.jl")
 include("observables.jl")
+include("write.jl")
 
 export
     k_to_n,
@@ -56,6 +57,7 @@ export
     ObservablesCache,
     build_observables_cache,
     PoissonCache,
-    build_poisson_cache
-
+    build_poisson_cache,
+    write_parameters,
+    write_data
 end
