@@ -203,7 +203,7 @@ function strang_step_v3!(
     return_field::Bool=false,
 )
 
-    # Get electric field TT
+    # Get electric field MPO
     electric_field_mps = get_electric_field_mps(
         psi_mps,
         full_poisson_mpo;
@@ -212,6 +212,7 @@ function strang_step_v3!(
         maxrank = params.maxrank,
         alg = params.alg,
     )
+    # TODO: Implement MPS -> MPO conversion in ITensor
     electric_field_tt = TCI.TensorTrain(ITensors.cpu(electric_field_mps))
     electric_field_mpo = tt_to_mpo(electric_field_tt)
     stretched_electric_field_mpo_it = MPO(stretched_mpo(electric_field_mpo, 1, 2); sites = sites_mpo)
@@ -226,7 +227,7 @@ function strang_step_v3!(
     B = 1im * apply(stretched_electric_field_mpo_it, stretched_kv_mpo_it)
     dt = params.dt
 
-    # RK4
+    # RK4 update
     k1 = apply(B, psi_hat; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
     psi_tmp = psi_hat + (dt/2) * k1
 
@@ -239,16 +240,14 @@ function strang_step_v3!(
     k4 = apply(B, psi_tmp; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
 
     psi_hat_evolved = psi_hat + (dt / 6) * (k1 + 2k2 + 2k3 + k4)
-    println(norm(psi_hat_evolved))
-
+    
+    # Inverse Fourier transform in v
     psi_mps = apply(v_inv_fourier_mpo_it, psi_hat_evolved; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
-    println(norm(psi_mps))
 
+    # Free streaming step
     psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
 
-    println(norm(psi_mps))
-    println("-")
-    println("-")
+    # Normalize according to L1 norm
     if target_norm !== nothing
         current_l1 = total_charge(psi_mps, phase)
         psi_mps .= (target_norm / current_l1) * psi_mps
