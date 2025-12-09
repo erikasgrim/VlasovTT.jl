@@ -13,42 +13,18 @@ using CUDA
 using Plots
 using ProgressBars
 
-function write_parameters(params::VlasovTT.SimulationParams, phase, directory::String)
-    mkpath(directory)
-    open(joinpath(directory, "simulation_params.txt"), "w") do io
-        println(io, "Simulation Parameters:")
-        println(io, "dt = $(params.dt)")
-        println(io, "tolerance = $(params.tolerance)")
-        println(io, "maxrank = $(params.maxrank)")
-        println(io, "k_cut = $(params.k_cut)")
-        println(io, "beta = $(params.beta)")
-        println(io, "Grid Parameters:")
-        println(io, "R = $(phase.R)")
-        println(io, "xmin = $(phase.xmin)")
-        println(io, "xmax = $(phase.xmax)")
-        println(io, "vmin = $(phase.vmin)")
-        println(io, "vmax = $(phase.vmax)")
-    end
-end
+function run_two_stream(; use_gpu::Bool = false, save_every::Int = 50)
 
-function write_data(step::Int, time::Real, charge::Real, ef_energy::Real, k_energy::Real, directory::String)
-    filepath = joinpath(directory, "data.csv")
-    needs_header = !isfile(filepath) || filesize(filepath) == 0
-    open(filepath, "a") do io
-        if needs_header
-            println(io, "step,time,charge,ef_energy,kinetic_energy,total_energy")
-        end
-        println(io, "$(step),$(time),$(charge),$(ef_energy),$(k_energy),$(ef_energy + k_energy)")
-    end
-end
-
-function run_two_stream(; use_gpu::Bool = true, save_every::Int = 20)
-    
     # Simulation parameters
-    dt = .01
-    Tfinal = 50.0
+    dt = .02
+    Tfinal = 100.0
     nsteps = Int(Tfinal / dt)
- 
+    k_cut = 2^9
+    beta = 0.0
+
+    simulation_name = "two_stream_v3"
+    
+    # Grid parameters
     R = 8
 
     xmin = -5.0
@@ -56,11 +32,11 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 20)
     vmin = -2.0
     vmax = 2.0
 
+    # TT parameters
     tolerance = 1e-8
     maxrank = 32
-    k_cut = 2^9
-    beta = 0.0
 
+    # Build phase space grids and simulation parameters
     phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
     params = VlasovTT.SimulationParams(
         dt = dt,
@@ -72,8 +48,7 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 20)
         alg = "naive",
     )
 
-    # Set up directories
-    simulation_name = "two_stream"
+    # Set up simulation directories
     simulation_dir = joinpath("results", simulation_name)
     figure_dir = joinpath(simulation_dir, "figures")
     data_filepath = joinpath(simulation_dir, "data.csv")
@@ -98,10 +73,10 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 20)
 
     # Build initial condition
     ic_fn = two_stream_instability_ic(phase; A = 0.1, v0 = .5, vt = 0.2, mode = 3)
-    #ic_fn = gaussian_ic(phase; x0 = 0.0, sigma_x = 1.0, v0 = 0.0, sigma_v = 1.0)
-    tt, interp_rank, interp_error = build_initial_tt(ic_fn, R; tolerance = params.tolerance)
+    tt, _, _ = build_initial_tt(ic_fn, R; tolerance = params.tolerance)
     println("Initial condition TT ranks: ", TCI.rank(tt))
 
+    # Convert to ITensor MPS & MPOs
     psi_mps = MPS(tt)
     sites_mps = siteinds(psi_mps)
     sites_mpo = [[prime(s, 1), s] for s in sites_mps]
@@ -116,22 +91,18 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 20)
         psi_mps = cu(psi_mps)
     end
 
+    # Values for plotting
     x_vals = range(phase.xmin, phase.xmax; length = 300)
     v_vals = range(phase.vmin, phase.vmax; length = 300)
 
-    init_norm = norm(psi_mps)
-    init_charge = total_charge(psi_mps, phase)
-    init_ke = kinetic_energy(psi_mps, phase)
-    println("Initial norm: $init_norm")
-    println("Initial total charge: $init_charge")
-    println("Initial kinetic energy: $init_ke")
-    write_data(0, 0.0, init_charge, 0.0, init_ke, simulation_dir)
-
+    # Build cache for observables
     observables_cache = build_observables_cache(psi_mps, phase)
+    init_charge = total_charge(psi_mps, phase)
 
     # Half step in free streaming
     psi_mps = apply(itensor_mpos.half_free_stream, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
 
+    loop_start_time = time()
     iter = ProgressBar(1:nsteps)
     for step in iter
         psi_mps, ef_mps = strang_step_v3!(
@@ -148,15 +119,17 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 20)
             return_field = true,
         )
 
-        if step % save_every == 0
-            set_description(iter, "Norm ratio: $(round(norm(psi_mps) / init_norm, digits = 6)), Bond dim: $(maxlinkdim(psi_mps))")
+        if step % save_every == 1
             n_digits = 4
+            elapsed_time = round(time() - loop_start_time; digits = n_digits)
             write_data(
                 step, 
                 round(step * params.dt, digits=n_digits), 
                 round(real(total_charge(psi_mps, phase; cache=observables_cache)), digits=n_digits),
                 round(real(electric_field_energy(ef_mps, phase)), digits=n_digits),
                 round(real(kinetic_energy(psi_mps, phase; cache=observables_cache)), digits=n_digits),
+                maxlinkdim(psi_mps),
+                elapsed_time,
                 simulation_dir
             )
             
@@ -174,19 +147,19 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 20)
                 "results/$simulation_name/figures/phase_space_step$(step).png",
             )
 
-            ef_snapshot = TCI.TensorTrain(ITensors.cpu(ef_mps))
-            E_x_vals = [real.(ef_snapshot(origcoord_to_quantics(phase.x_grid, x))) for x in x_vals]
-            Plots.savefig(
-                Plots.plot(
-                    x_vals,
-                    E_x_vals;
-                    xlabel = "x",
-                    ylabel = "E(x)",
-                    title = "Electric Field at t = $(round(step * params.dt, digits = 3))",
-                    ylim = (-0.1, 0.1),
-                ),
-                "results/$simulation_name/figures/electric_field_step$(step).png",
-            )
+            # ef_snapshot = TCI.TensorTrain(ITensors.cpu(ef_mps))
+            # E_x_vals = [real.(ef_snapshot(origcoord_to_quantics(phase.x_grid, x))) for x in x_vals]
+            # Plots.savefig(
+            #     Plots.plot(
+            #         x_vals,
+            #         E_x_vals;
+            #         xlabel = "x",
+            #         ylabel = "E(x)",
+            #         title = "Electric Field at t = $(round(step * params.dt, digits = 3))",
+            #         ylim = (-0.1, 0.1),
+            #     ),
+            #     "results/$simulation_name/figures/electric_field_step$(step).png",
+            # )
         end
     end
 
