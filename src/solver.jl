@@ -5,15 +5,16 @@ struct SolverMPOs
     v_inv_fourier_mpo::TCI.TensorTrain
     fourier_mpo::TCI.TensorTrain
     inv_fourier_mpo::TCI.TensorTrain
-    half_free_streaming_mpo::TCI.TensorTrain
-    full_free_streaming_mpo::TCI.TensorTrain
+    half_free_streaming_fourier_mpo::TCI.TensorTrain
+    full_free_streaming_fourier_mpo::TCI.TensorTrain
     poisson_mpo::TCI.TensorTrain
     full_poisson_mpo::TCI.TensorTrain
     stretched_kv_mpo::TCI.TensorTrain
+    #mixed_basis_free_streaming_mpo::TCI.TensorTrain
 end
 
 function build_fourier_mpos(R::Int; tolerance::Real = 1e-8, lsb_first::Bool = false)
-    fourier_tol = 1e-10
+    fourier_tol = 1e-12
     x_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = -1.0, tolerance = fourier_tol)
     v_fourier_mpo = stretched_fourier_mpo(R, 2, 2; sign = -1.0, tolerance = fourier_tol)
     x_inv_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = 1.0, tolerance = fourier_tol, lsb_first = true)
@@ -32,13 +33,15 @@ function build_fourier_mpos(R::Int; tolerance::Real = 1e-8, lsb_first::Bool = fa
     )
 end
 
-function build_kv_tt(Lv, M, kv_grid; tolerance::Real = 1e-12)
+function build_kv_mpo(Lv, M, kv_grid; tolerance::Real = 1e-12, k_cut::Real = 2^8, beta::Real = 2.0)
     function kv_kernel(kv)
         q_bits_normal = origcoord_to_quantics(kv_grid, kv)
         q_bits_reversed = reverse(q_bits_normal)
         kv_reversed = quantics_to_origcoord(kv_grid, q_bits_reversed)
 
-        return 2pi * k_to_n(kv_reversed, M) / Lv #* Theta(k_to_n(kv_reversed, M); k_cut = 2^14, beta = 2.0)
+        nv = k_to_n(kv_reversed, M)
+
+        return 2pi * nv / Lv * frequency_filter(nv; k_cut = k_cut, beta = beta)
     end
 
     qtci, _, _ = quanticscrossinterpolate(
@@ -54,14 +57,14 @@ function build_solver_mpos(
     phase::PhaseSpaceGrids;
     dt::Real,
     tolerance::Real = 1e-8,
-    k_cut::Real = 2^6,
+    k_cut::Real = 2^8,
     beta::Real = 2.0,
     eps0::Real = 1.0,
     lsb_first::Bool = true,
 )
     fourier = build_fourier_mpos(phase.R; tolerance = tolerance, lsb_first = lsb_first)
 
-    full_free_streaming_mpo_fourier = get_free_streaming_mpo(
+    full_free_streaming_fourier_mpo = get_free_streaming_mpo(
         dt,
         phase.Lx,
         phase.M,
@@ -73,19 +76,19 @@ function build_solver_mpos(
         lsb_first = lsb_first,
     )
 
-    full_free_streaming_mpo = TCI.contract(
-        fourier.x_inv_fourier_mpo,
-        TCI.contract(
-            full_free_streaming_mpo_fourier,
-            fourier.x_fourier_mpo;
-            algorithm = :naive,
-            tolerance = tolerance,
-        );
-        algorithm = :naive,
-        tolerance = tolerance,
-    )
+    # full_free_streaming_mpo = TCI.contract(
+    #     fourier.x_inv_fourier_mpo,
+    #     TCI.contract(
+    #         full_free_streaming_mpo_fourier,
+    #         fourier.x_fourier_mpo;
+    #         algorithm = :naive,
+    #         tolerance = tolerance,
+    #     );
+    #     algorithm = :naive,
+    #     tolerance = tolerance,
+    # )
 
-    half_free_streaming_mpo_fourier = get_free_streaming_mpo(
+    half_free_streaming_fourier_mpo = get_free_streaming_mpo(
         dt / 2,
         phase.Lx,
         phase.M,
@@ -97,17 +100,17 @@ function build_solver_mpos(
         lsb_first = lsb_first,
     )
 
-    half_free_streaming_mpo = TCI.contract(
-        fourier.x_inv_fourier_mpo,
-        TCI.contract(
-            half_free_streaming_mpo_fourier,
-            fourier.x_fourier_mpo;
-            algorithm = :naive,
-            tolerance = tolerance,
-        );
-        algorithm = :naive,
-        tolerance = tolerance,
-    )
+    # half_free_streaming_mpo = TCI.contract(
+    #     fourier.x_inv_fourier_mpo,
+    #     TCI.contract(
+    #         half_free_streaming_mpo_fourier,
+    #         fourier.x_fourier_mpo;
+    #         algorithm = :naive,
+    #         tolerance = tolerance,
+    #     );
+    #     algorithm = :naive,
+    #     tolerance = tolerance,
+    # )
 
     poisson_mpo = get_poisson_mpo(
         phase.Lx,
@@ -129,14 +132,39 @@ function build_solver_mpos(
         tolerance = tolerance,
     )
 
-    kv_mpo = build_kv_tt(
+    kv_mpo = build_kv_mpo(
         phase.Lv, 
         phase.M, 
         phase.kv_grid; 
-        tolerance = tolerance
+        tolerance = tolerance,
+        k_cut = k_cut,
+        beta = beta,
     )
 
     stretched_kv_mpo = stretched_mpo(kv_mpo, 2, 2)
+
+    # v^{-1} Fourier -> x Fourier -> full free stream -> x^{-1} Fourier -> v Fourier
+    # mixed_basis_free_streaming_mpo = TCI.contract(
+    #     fourier.v_fourier_mpo,
+    #     TCI.contract(
+    #         fourier.x_inv_fourier_mpo,
+    #         TCI.contract(
+    #             full_free_streaming_mpo_fourier,
+    #             TCI.contract(
+    #                 fourier.x_fourier_mpo,
+    #                 fourier.v_inv_fourier_mpo;
+    #                 algorithm = :naive,
+    #                 tolerance = tolerance,
+    #             );
+    #             algorithm = :naive,
+    #             tolerance = tolerance,
+    #         );
+    #         algorithm = :naive,
+    #         tolerance = tolerance,
+    #     );
+    #     algorithm = :naive,
+    #     tolerance = tolerance,
+    # )
 
     return SolverMPOs(
         fourier.x_fourier_mpo,
@@ -145,11 +173,12 @@ function build_solver_mpos(
         fourier.v_inv_fourier_mpo,
         fourier.fourier_mpo,
         fourier.inv_fourier_mpo,
-        half_free_streaming_mpo,
-        full_free_streaming_mpo,
+        half_free_streaming_fourier_mpo,
+        full_free_streaming_fourier_mpo,
         poisson_mpo,
         full_poisson_mpo,
         stretched_kv_mpo,
+        #mixed_basis_free_streaming_mpo,
     )
 end
 
@@ -157,26 +186,66 @@ function prepare_itensor_mpos(
     mpos::SolverMPOs,
     sites_mpo;
     use_gpu::Bool = false,
+    cutoff::Real = 1e-8,
 )
-    full_free_stream_mpo_it = MPO(mpos.full_free_streaming_mpo; sites = sites_mpo)
-    half_free_stream_mpo_it = MPO(mpos.half_free_streaming_mpo; sites = sites_mpo)
+    full_free_stream_fourier_mpo_it = MPO(mpos.full_free_streaming_fourier_mpo; sites = sites_mpo)
+    half_free_stream_fourier_mpo_it = MPO(mpos.half_free_streaming_fourier_mpo; sites = sites_mpo)
+
+    x_fourier_mpo_it = MPO(mpos.x_fourier_mpo; sites = sites_mpo)
+    x_inv_fourier_mpo_it = MPO(mpos.x_inv_fourier_mpo; sites = sites_mpo)
+
     v_fourier_mpo_it = MPO(mpos.v_fourier_mpo; sites = sites_mpo)
     v_inv_fourier_mpo_it = MPO(mpos.v_inv_fourier_mpo; sites = sites_mpo)
+
     stretched_kv_mpo_it = MPO(mpos.stretched_kv_mpo; sites = sites_mpo)
+    #mixed_basis_free_stream_mpo_it = MPO(mpos.mixed_basis_free_streaming_mpo; sites = sites_mpo)
+
+    full_free_stream_mpo_it = apply(
+        x_inv_fourier_mpo_it,
+        apply(
+            full_free_stream_fourier_mpo_it,
+            x_fourier_mpo_it;
+            alg = "naive",
+            cutoff = cutoff,
+        );
+        alg = "naive",
+        cutoff = cutoff,
+    )
+
+    half_free_stream_mpo_it = apply(
+        x_inv_fourier_mpo_it,
+        apply(
+            half_free_stream_fourier_mpo_it,
+            x_fourier_mpo_it;
+            alg = "naive",
+            cutoff = cutoff,
+        );
+        alg = "naive",
+        cutoff = cutoff,
+    )
 
     if use_gpu
         full_free_stream_mpo_it = cu(full_free_stream_mpo_it)
         half_free_stream_mpo_it = cu(half_free_stream_mpo_it)
+
+        x_fourier_mpo_it = cu(x_fourier_mpo_it)
+        x_inv_fourier_mpo_it = cu(x_inv_fourier_mpo_it)
+
         v_fourier_mpo_it = cu(v_fourier_mpo_it)
         v_inv_fourier_mpo_it = cu(v_inv_fourier_mpo_it)
+
         stretched_kv_mpo_it = cu(stretched_kv_mpo_it)
+        #mixed_basis_free_stream_mpo_it = cu(mixed_basis_free_stream_mpo_it)
     end
 
     return (
         full_free_stream = full_free_stream_mpo_it,
         half_free_stream = half_free_stream_mpo_it,
+        x_fourier = x_fourier_mpo_it,
+        x_inv_fourier = x_inv_fourier_mpo_it,
         v_fourier = v_fourier_mpo_it,
         v_inv_fourier = v_inv_fourier_mpo_it,
         stretched_kv = stretched_kv_mpo_it,
+        #mixed_basis_free_stream = mixed_basis_free_stream_mpo_it,
     )
 end
