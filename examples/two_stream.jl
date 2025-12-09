@@ -13,19 +13,19 @@ using CUDA
 using Plots
 using ProgressBars
 
-function run_two_stream(; use_gpu::Bool = false, save_every::Int = 50)
+function run_two_stream(; use_gpu::Bool = true, save_every::Int = 20)
 
     # Simulation parameters
-    dt = .02
-    Tfinal = 100.0
+    dt = .1
+    Tfinal = 50.0
     nsteps = Int(Tfinal / dt)
-    k_cut = 2^9
-    beta = 0.0
+    k_cut = 2^8
+    beta = 2.0
 
-    simulation_name = "two_stream_v3"
+    simulation_name = "two_stream_v4"
     
     # Grid parameters
-    R = 8
+    R = 10
 
     xmin = -5.0
     xmax = 5.0
@@ -33,14 +33,16 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 50)
     vmax = 2.0
 
     # TT parameters
-    tolerance = 1e-8
-    maxrank = 32
+    TCI_tolerance = 1e-10
+    maxrank = 48
+    cutoff = 1e-8
 
     # Build phase space grids and simulation parameters
     phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
     params = VlasovTT.SimulationParams(
         dt = dt,
-        tolerance = tolerance,
+        tolerance = TCI_tolerance,
+        cutoff = cutoff,
         maxrank = maxrank,
         k_cut = k_cut,
         beta = beta,
@@ -68,8 +70,6 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 50)
         eps0 = 1.0,
         lsb_first = true,
     )
-    println("Full free streaming MPO ranks: ", TCI.rank(solver_mpos.full_free_streaming_mpo))
-    println("Full Poisson MPO ranks: ", TCI.rank(solver_mpos.full_poisson_mpo))
 
     # Build initial condition
     ic_fn = two_stream_instability_ic(phase; A = 0.1, v0 = .5, vt = 0.2, mode = 3)
@@ -92,15 +92,22 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 50)
     end
 
     # Values for plotting
-    x_vals = range(phase.xmin, phase.xmax; length = 300)
-    v_vals = range(phase.vmin, phase.vmax; length = 300)
+    x_vals = range(phase.xmin, phase.xmax; length = min(300, phase.M))
+    v_vals = range(phase.vmin, phase.vmax; length = min(300, phase.M))
 
     # Build cache for observables
     observables_cache = build_observables_cache(psi_mps, phase)
     init_charge = total_charge(psi_mps, phase)
 
     # Half step in free streaming
-    psi_mps = apply(itensor_mpos.half_free_stream, psi_mps; alg = params.alg, truncate = true, maxdim = params.maxrank, cutoff = params.tolerance)
+    psi_mps = apply(
+        itensor_mpos.full_free_stream,
+        psi_mps;
+        alg = params.alg,
+        truncate = true,
+        maxdim = params.maxrank,
+        cutoff = params.cutoff,
+    )
 
     loop_start_time = time()
     iter = ProgressBar(1:nsteps)
@@ -113,13 +120,14 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 50)
             itensor_mpos.v_fourier,
             itensor_mpos.v_inv_fourier,
             itensor_mpos.stretched_kv,
+            #itensor_mpos.mixed_basis_free_stream_mpo,
             sites_mpo;
             params = params,
             target_norm = init_charge,
             return_field = true,
         )
 
-        if step % save_every == 1
+        if step % save_every == 0 || step == 1 || step == nsteps
             n_digits = 4
             elapsed_time = round(time() - loop_start_time; digits = n_digits)
             write_data(
