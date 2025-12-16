@@ -76,5 +76,5 @@ function build_initial_tt(ic_fn, R::Int; tolerance::Real = 1e-8)
         fill(2, 2R);
         tolerance = tolerance,
     )
-    return TCI.TensorTrain(tci), interp_rank, interp_error
+    return tci, interp_rank, interp_error
 end
