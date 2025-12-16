@@ -9,6 +9,7 @@ function write_parameters(params::VlasovTT.SimulationParams, phase, directory::S
         println(io, "maxrank_ef = $(params.maxrank_ef)")
         println(io, "k_cut = $(params.k_cut)")
         println(io, "beta = $(params.beta)")
+        println(io, "v0 = $(params.v0)")
         println(io, "Grid Parameters:")
         println(io, "R = $(phase.R)")
         println(io, "xmin = $(phase.xmin)")
