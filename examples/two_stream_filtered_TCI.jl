@@ -13,16 +13,16 @@ using CUDA
 using Plots
 using ProgressBars
 
-function run_two_stream(; use_gpu::Bool = false, save_every::Int = 10)
+function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
 
     # Simulation parameters
-    dt = .05
+    dt = .1
     Tfinal = 60.0
     nsteps = Int(Tfinal / dt)
     k_cut = 2^7 # This keeps the 2^... lowest negative AND positive modes. 
     beta = 2.0
 
-    simulation_name = "two_stream_filtered_TCI_v1"
+    simulation_name = "two_stream_filtered_TCI_v2"
     
     # Grid parameters
     R = 10
@@ -86,7 +86,7 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 10)
     println("Initial condition TT ranks: ", TCI.rank(tt))
 
     # Convert to ITensor MPS & MPOs
-    psi_mps = MPS(tt)
+    psi_mps = MPS(TCI.TensorTrain(tt))
     mps_sites = siteinds(psi_mps)
     sites_mpo = [[prime(s, 1), s] for s in mps_sites]
 
@@ -117,8 +117,9 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 10)
 
     loop_start_time = time()
     iter = ProgressBar(1:nsteps)
+    previous_tci = nothing
     for step in iter
-        psi_mps, ef_mps = strang_step_filtered_TCI!(
+        psi_mps, ef_mps, previous_tci = strang_step_filtered_TCI!(
             psi_mps,
             phase,
             solver_mpos.full_poisson_mpo,
@@ -128,7 +129,8 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 10)
             itensor_mpos.v_fourier,
             itensor_mpos.v_inv_fourier,
             itensor_mpos.half_filtering,
-            mps_sites;
+            mps_sites,
+            previous_tci;
             params = params,
             #target_norm = init_charge,
             return_field = true,

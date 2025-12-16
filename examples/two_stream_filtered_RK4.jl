@@ -86,7 +86,7 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 10)
     println("Initial condition TT ranks: ", TCI.rank(tt))
 
     # Convert to ITensor MPS & MPOs
-    psi_mps = MPS(tt)
+    psi_mps = MPS(TCI.TensorTrain(tt))
     sites_mps = siteinds(psi_mps)
     sites_mpo = [[prime(s, 1), s] for s in sites_mps]
 

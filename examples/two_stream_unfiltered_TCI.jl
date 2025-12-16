@@ -16,7 +16,7 @@ using ProgressBars
 function run_two_stream(; use_gpu::Bool = false, save_every::Int = 10)
 
     # Simulation parameters
-    dt = .05
+    dt = .1
     Tfinal = 60.0
     nsteps = Int(Tfinal / dt)
     k_cut = 2^7 # This keeps the 2^... lowest negative AND positive modes. 
@@ -34,7 +34,7 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 10)
     normalize = true
 
     # TT parameters
-    TCI_tolerance = 1e-8
+    TCI_tolerance = 1e-6
     maxrank = 160
     maxrank_ef = 8
     cutoff = 1e-8
@@ -82,7 +82,7 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 10)
     println("Initial condition TT ranks: ", TCI.rank(tt))
 
     # Convert to ITensor MPS & MPOs
-    psi_mps = MPS(tt)
+    psi_mps = MPS(TCI.TensorTrain(tt))
     mps_sites = siteinds(psi_mps)
     sites_mpo = [[prime(s, 1), s] for s in mps_sites]
 
@@ -110,10 +110,11 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 10)
     psi_mps = apply(itensor_mpos.x_inv_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
     psi_mps = apply(itensor_mpos.v_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
 
+    previous_tci = nothing
     loop_start_time = time()
     iter = ProgressBar(1:nsteps)
     for step in iter
-        psi_mps, ef_mps = strang_step_unfiltered_TCI!(
+        psi_mps, ef_mps, previous_tci = strang_step_unfiltered_TCI!(
             psi_mps,
             phase,
             solver_mpos.full_poisson_mpo,
@@ -122,21 +123,21 @@ function run_two_stream(; use_gpu::Bool = false, save_every::Int = 10)
             itensor_mpos.x_inv_fourier,
             itensor_mpos.v_fourier,
             itensor_mpos.v_inv_fourier,
-            mps_sites;
+            mps_sites,
+            previous_tci;
             params = params,
             #target_norm = init_charge,
-            return_field = true,
         )
 
         if step % save_every == 0 || step == 1 || step == nsteps
-            n_digits = 4
+            n_digits = 6
             elapsed_time = round(time() - loop_start_time; digits = n_digits)
             
             # Copy the MPS and bring it back to v-space for visualization
             psi_plot = copy(psi_mps)
             psi_plot = apply(itensor_mpos.v_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
             #psi_plot = apply(itensor_mpos.x_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
-
+            
             write_data(
                 step, 
                 round(step * params.dt, digits=n_digits), 
