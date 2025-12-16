@@ -279,7 +279,8 @@ function strang_step_filtered_TCI!(
     v_fourier_mpo_it::MPO,
     v_inv_fourier_mpo_it::MPO,
     half_filtering_mpo_it::MPO,
-    mps_sites;
+    mps_sites,
+    previous_tci;
     params::SimulationParams,
     target_norm::Union{Real,Nothing}=nothing,
     return_field::Bool=false,
@@ -311,15 +312,46 @@ function strang_step_filtered_TCI!(
         phase_angle = E_val * kv_phys * params.dt
         return exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(kv_phys; beta=params.beta, k_cut=params.k_cut)
     end
+    kernel = TCI.CachedFunction{ComplexF64}(kernel, fill(2, 2*phase.R))
 
-    psi_tt = TCI.crossinterpolate2(
-        ComplexF64,
-        kernel,
-        fill(2, 2*phase.R),
-        acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true);
-        tolerance = params.tolerance,
-        maxbonddim = params.maxrank,
-    )[1]
+    # if previous_tci === nothing
+    #     pivots = acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true)
+    # else
+    #     pivots = collect_final_pivots(previous_tci)
+    #     println(pivots)
+    # end
+
+    # psi_tt = TCI.crossinterpolate2(
+    #     ComplexF64,
+    #     kernel,
+    #     fill(2, 2*phase.R),
+    #     pivots;
+    #     tolerance = params.tolerance,
+    #     maxbonddim = params.maxrank,
+    #     verbosity = 1
+    # )[1]
+
+    if previous_tci === nothing
+        pivots = acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true)
+
+        psi_tt = TCI.crossinterpolate2(
+            ComplexF64,
+            kernel,
+            fill(2, 2*phase.R),
+            pivots;
+            tolerance = params.tolerance,
+            maxbonddim = params.maxrank,
+        )[1]
+    else
+        TCI.optimize!(
+            previous_tci, 
+            kernel; 
+            tolerance = params.tolerance, 
+            maxbonddim = params.maxrank, 
+            verbosity = 0,
+            )
+        psi_tt = previous_tci
+    end
 
     psi_mps = MPS(psi_tt; sites = mps_sites)
     if params.use_gpu
@@ -352,7 +384,7 @@ function strang_step_filtered_TCI!(
         psi_mps .= (target_norm / current_charge) * psi_mps
     end
 
-    return return_field ? (psi_mps, electric_field_mps) : psi_mps
+    return psi_mps, electric_field_mps, psi_tt
 end
 
 function strang_step_unfiltered_TCI!(
@@ -364,10 +396,10 @@ function strang_step_unfiltered_TCI!(
     x_inv_fourier_mpo_it::MPO,
     v_fourier_mpo_it::MPO,
     v_inv_fourier_mpo_it::MPO,
-    mps_sites;
+    mps_sites,
+    previous_tci;
     params::SimulationParams,
     target_norm::Union{Real,Nothing}=nothing,
-    return_field::Bool=false,
 )
 
     # Get electric field MPO
@@ -395,16 +427,48 @@ function strang_step_unfiltered_TCI!(
 
         phase_angle = E_val * kv_phys * params.dt
         return exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(kv_phys; beta=params.beta, k_cut=params.k_cut)
+        #return ( 1 + im * phase_angle - phase_angle^2 / 2 - im * phase_angle^3 / 6 + phase_angle^4 / 24 ) * psi_tt(q_bits) * frequency_filter(kv_phys; beta=params.beta, k_cut=params.k_cut)
     end
+    kernel = TCI.CachedFunction{ComplexF64}(kernel, fill(2, 2*phase.R))
 
-    psi_tt = TCI.crossinterpolate2(
-        ComplexF64,
-        kernel,
-        fill(2, 2*phase.R),
-        acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true);
-        tolerance = params.tolerance,
-        maxbonddim = params.maxrank,
-    )[1]
+    # if previous_tci === nothing
+    #     pivots = acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true)
+    # else
+    #     pivots = collect_final_pivots(previous_tci)
+    #     println(pivots)
+    # end
+
+    # psi_tt = TCI.crossinterpolate2(
+    #     ComplexF64,
+    #     kernel,
+    #     fill(2, 2*phase.R),
+    #     pivots;
+    #     tolerance = params.tolerance,
+    #     maxbonddim = params.maxrank,
+    #     verbosity = 1
+    # )[1]
+
+    if previous_tci === nothing
+        pivots = acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true)
+
+        psi_tt = TCI.crossinterpolate2(
+            ComplexF64,
+            kernel,
+            fill(2, 2*phase.R),
+            pivots;
+            tolerance = params.tolerance,
+            maxbonddim = params.maxrank,
+        )[1]
+    else
+        TCI.optimize!(
+            previous_tci, 
+            kernel; 
+            tolerance = params.tolerance, 
+            maxbonddim = params.maxrank, 
+            verbosity = 0,
+            )
+        psi_tt = previous_tci
+    end
 
     psi_mps = MPS(psi_tt; sites = mps_sites)
     if params.use_gpu
@@ -431,7 +495,7 @@ function strang_step_unfiltered_TCI!(
         psi_mps .= (target_norm / current_charge) * psi_mps
     end
 
-    return return_field ? (psi_mps, electric_field_mps) : psi_mps
+    return psi_mps, electric_field_mps, psi_tt
 end
 
 function strang_step_filtered_RK4!(
