@@ -9,6 +9,11 @@ function interleave_bits(q_first::AbstractVector{Int}, q_second::AbstractVector{
     return q
 end
 
+function interleave_bits(q_first::AbstractVector{<:AbstractVector{Int}}, q_second::AbstractVector{<:AbstractVector{Int}})
+    @assert length(q_first) == length(q_second)
+    return [interleave_bits(q_first[i], q_second[i]) for i in eachindex(q_first)]
+end
+
 function frequency_filter(n; beta::Real = 2.0, k_cut::Real = 2^8)
     return 1 / (exp((abs(n) - k_cut) * beta) + 1)
 end
