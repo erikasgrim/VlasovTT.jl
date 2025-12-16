@@ -3,7 +3,7 @@ struct ObservablesCache
     v2_mps::MPS
 end
 
-function build_observables_cache(psi_mps::MPS, phase::PhaseSpaceGrids; tolerance::Real = 1e-8)
+function build_observables_cache(psi_mps::MPS, phase::PhaseSpaceGrids; tolerance::Real = 1e-12)
     sites = siteinds(psi_mps)
 
     v2_fn = quantics -> begin
@@ -18,7 +18,7 @@ function build_observables_cache(psi_mps::MPS, phase::PhaseSpaceGrids; tolerance
         fill(2, 2 * phase.R);
         tolerance = tolerance,
     )
-    v2_mps = MPS(v2_tt)
+    v2_mps = MPS(v2_tt; sites = sites)
 
     return ObservablesCache(ones_mps(sites), v2_mps)
 end
