@@ -145,6 +145,7 @@ function build_solver_mpos(
     k_cut::Real = 2^8,
     beta::Real = 2.0,
     eps0::Real = 1.0,
+    v0::Real = 1e-1,
     lsb_first::Bool = true,
 )
     fourier = build_fourier_mpos(phase.R; tolerance = tolerance, lsb_first = lsb_first)
@@ -193,7 +194,7 @@ function build_solver_mpos(
         phase.kv_grid,
         phase.kx_grid;
         tolerance = tolerance,
-        v0 = 2e-2,
+        v0 = v0,
     )
 
     poisson_mpo = get_poisson_mpo(
