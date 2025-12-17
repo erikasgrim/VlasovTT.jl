@@ -6,7 +6,7 @@ Base.@kwdef struct SimulationParams
     maxrank_ef::Union{Int,Nothing} = nothing
     k_cut::Real = 2^6
     beta::Real = 2.0
-    v0::Real = 1e-1
+    v0::Real = 0.0
     use_gpu::Bool = false
     alg::String = "naive"
     l1_normalize::Bool = true
