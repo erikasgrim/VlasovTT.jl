@@ -31,18 +31,18 @@ end
 
 function linear_landau_damping_ic(
     phase::PhaseSpaceGrids;
+    A::Real = 0.1,
     v0::Real = 0.0,
-    sigma_v::Real = 1.0,
-    alpha::Real = 0.1,
+    vt::Real = 1.0,
     mode::Int = 1,
 )
-    norm_const = 1 / (sqrt(2π) * sigma_v)
+    norm_const = 1 / (sqrt(2π) * vt)
     k0 = mode * 2π / phase.Lx
     return quantics -> begin
         coords = quantics_to_origcoord(phase.x_v_grid, quantics)
         x = coords[1]
         v = coords[2]
-        return 1 / phase.Lx * (1 + alpha * cos(k0 * x)) * norm_const * exp(-((v - v0)^2) / (2 * sigma_v^2))
+        return (1 + A * cos(k0 * x)) * norm_const * exp(-((v - v0)^2) / (2 * vt^2))
     end
 end
 
@@ -65,16 +65,15 @@ function two_stream_instability_ic(
             exp(-0.5 * ((v + v0) / vt)^2)
         )
 
-        return f_beams * (1 + A * sin(k * x))
+        return f_beams * (1 + A * cos(k * x))
     end
 end
 
-function build_initial_tt(ic_fn, R::Int; tolerance::Real = 1e-8, initialpivots = [ones(Int, length(localdims))])
+function build_initial_tt(ic_fn, R::Int; tolerance::Real = 1e-8)
     tci, interp_rank, interp_error = TCI.crossinterpolate2(
         Float64,
         ic_fn,
-        fill(2, 2R),
-        initialpivots;
+        fill(2, 2R);
         tolerance = tolerance,
     )
     return tci, interp_rank, interp_error
