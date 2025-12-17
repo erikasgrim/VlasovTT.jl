@@ -1,4 +1,5 @@
 using Plots
+using LaTeXStrings
 
 function read_data(filepath::String)
     steps = Int[]
@@ -23,18 +24,32 @@ function read_data(filepath::String)
 end
 
 let 
-    filepath = "results/two_stream/data.csv"
+    directory_path = "results/landau_damping_TCI_v1/"
+    filepath = joinpath(directory_path, "data.csv")
     steps, times, charges, ef_energy, kinetic_energy, total_energy = read_data(filepath)
 
-    println(steps)
+    gamma_analytic = -0.15139
+    #gamma_analytic = -0.2
+    ef_analytic = [6e-4 * exp(2 * gamma_analytic * t) for t in times]
+
+    default(
+        fontfamily = "Computer Modern",
+        guidefontsize = 14,
+        tickfontsize = 12,
+        legendfontsize = 12,
+        linewidth = 2,
+    )
 
     plt = plot(
         times,
-        [ef_energy, kinetic_energy, total_energy],
-        xlabel = "Time",
-        ylabel = "Total Charge",
-        title = "Total Charge vs Time",
-        legend = false,
+        [ef_energy, ef_analytic],
+        xlabel = L"t",
+        ylabel = L"\mathcal{E}_E",
+        label = [L"\mathrm{Numerical}" L"\mathrm{Analytic}"],
+        linestyles = [:solid :dash],
+        yaxis = :log10,
+        framestyle = :box,
     )
-    savefig(plt, "results/two_stream/total_charge_vs_time.png")
+    save_path = joinpath(directory_path, "energies_vs_time.png")
+    savefig(plt, save_path)
 end
