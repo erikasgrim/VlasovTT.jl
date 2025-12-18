@@ -28,8 +28,6 @@ let
     filepath = joinpath(directory_path, "data.csv")
     steps, times, charges, ef_energy, kinetic_energy, total_energy = read_data(filepath)
 
-
-
     # Extract the indices of local maximima of the electric field energy
     ef_max_indices = findall(i -> (i > 1 && i < length(ef_energy)) && (ef_energy[i] > ef_energy[i-1]) && (ef_energy[i] > ef_energy[i+1]), 1:length(ef_energy))
     ef_max_times = times[ef_max_indices]
@@ -37,13 +35,10 @@ let
     matrix = hcat(2 .* ef_max_times, ones(length(ef_max_times)))
     fit = matrix \ log_ef_max_values
     ef_fitted = exp(fit[2]) .* exp.(2 * fit[1] .* times)
-    println(fit)
-    println(ef_fitted)
-    # Linear fit 
-    #println(ef_max_indices)
 
+    # Linear fit 
     gamma_analytic = -0.15139
-    ef_analytic = [el_fitted[ef_max_indices[1]] * exp(2 * gamma_analytic * t) for t in times]
+    ef_analytic = [ef_fitted[1] * exp(2 * gamma_analytic * t) for t in times]
 
     default(
         fontfamily = "Computer Modern",
@@ -56,9 +51,9 @@ let
     plt = plot(
         times,
         [ef_energy, ef_analytic, ef_fitted],
-        xlabel = L"t",
+        xlabel = L"t\ [\omega_{pe}^{-1}]",
         ylabel = L"\mathcal{E}_E",
-        label = [L"\mathrm{Numerical}" L"\mathrm{Analytic\ }(\gamma=-0.151)" L"\mathrm{Fitted\ \gamma=$(round(fit[1], digits=4))}"],
+        label = [L"\mathrm{Numerical}" L"\mathrm{Analytic\ }\gamma=-0.151" L"\mathrm{Fitted\ \gamma=}" * latexstring(round(fit[1]; digits=4))],
         legend = :bottomleft,
         linestyles = [:solid :dash :dot],
         color = [1 2 :black],
