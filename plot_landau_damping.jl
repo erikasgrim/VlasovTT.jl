@@ -24,13 +24,13 @@ function read_data(filepath::String)
 end
 
 let 
-    directory_path = "results/landau_damping_TCI_v1/"
+    directory_path = "results/landau_damping_TCI_v3/"
     filepath = joinpath(directory_path, "data.csv")
     steps, times, charges, ef_energy, kinetic_energy, total_energy = read_data(filepath)
 
-    gamma_analytic = -0.15139
+    gamma_analytic = -0.15336
     #gamma_analytic = -0.2
-    ef_analytic = [6e-4 * exp(2 * gamma_analytic * t) for t in times]
+    ef_analytic = [8e-2 * exp(2 * gamma_analytic * t) for t in times]
 
     default(
         fontfamily = "Computer Modern",
@@ -46,6 +46,7 @@ let
         xlabel = L"t",
         ylabel = L"\mathcal{E}_E",
         label = [L"\mathrm{Numerical}" L"\mathrm{Analytic}"],
+        legend = :bottomleft,
         linestyles = [:solid :dash],
         yaxis = :log10,
         framestyle = :box,
