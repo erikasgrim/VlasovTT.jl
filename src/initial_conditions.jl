@@ -69,7 +69,17 @@ function two_stream_instability_ic(
     end
 end
 
-function build_initial_tt(ic_fn, R::Int; tolerance::Real = 1e-8)
+function build_initial_tt(ic_fn, R::Int; tolerance::Real = 1e-8, initialpivots=nothing)
+    if initialpivots !== nothing
+        tci, interp_rank, interp_error = TCI.crossinterpolate2(
+            Float64,
+            ic_fn,
+            fill(2, 2R),
+            initialpivots;
+            tolerance = tolerance,
+        )
+        return tci, interp_rank, interp_error
+    end
     tci, interp_rank, interp_error = TCI.crossinterpolate2(
         Float64,
         ic_fn,
