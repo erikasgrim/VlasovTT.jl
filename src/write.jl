@@ -19,14 +19,14 @@ function write_parameters(params::VlasovTT.SimulationParams, phase, directory::S
     end
 end
 
-function write_data(step::Int, time::Real, charge::Real, ef_energy::Real, k_energy::Real, bond_dimension::Int, elapsed_time::Real, directory::String)
+function write_data(step::Int, time::Real, charge::Real, ef_energy::Real, ke_energy::Real, momentum::Real, bond_dimension::Int, elapsed_time::Real, directory::String)
     filepath = joinpath(directory, "data.csv")
     needs_header = !isfile(filepath) || filesize(filepath) == 0
     open(filepath, "a") do io
         if needs_header
-            println(io, "step,time,charge,ef_energy,kinetic_energy,total_energy,bond_dimension,elapsed_time")
+            println(io, "step,time,charge,ef_energy,kinetic_energy,total_energy,momentum,bond_dimension,elapsed_time")
         end
-        total_energy = ef_energy + k_energy
-        println(io, "$(step),$(time),$(charge),$(ef_energy),$(k_energy),$(total_energy),$(bond_dimension),$(elapsed_time)")
+        total_energy = ef_energy + ke_energy
+        println(io, "$(step),$(time),$(charge),$(ef_energy),$(ke_energy),$(total_energy), $(momentum), $(bond_dimension),$(elapsed_time)")
     end
 end

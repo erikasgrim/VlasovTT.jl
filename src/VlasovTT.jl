@@ -61,6 +61,7 @@ export
     electric_field_energy,
     total_charge,
     kinetic_energy,
+    total_momentum,
     ObservablesCache,
     build_observables_cache,
     PoissonCache,
