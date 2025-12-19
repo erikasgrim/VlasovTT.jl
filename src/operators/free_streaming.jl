@@ -59,6 +59,7 @@ function get_free_streaming_mpo(
         initial_pivots;
         tolerance = tolerance,
     )
+    println("Free streaming MPO ranks: ", TCI.rank(tci))
     U_tt = TCI.TensorTrain(tci)
 
     return tt_to_mpo(U_tt)
