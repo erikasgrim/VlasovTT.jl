@@ -17,27 +17,27 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
 
     # Simulation parameters
     dt = .1
-    Tfinal = 60.0
+    Tfinal = 50.0
     nsteps = Int(Tfinal / dt)
     k_cut = 2^8 # This keeps the 2^... lowest negative AND positive modes. 
     beta = 2.0
 
-    simulation_name = "two_stream_unfiltered_TCI_v4"
+    simulation_name = "two_stream_unfiltered_TCI_v11"
     
     # Grid parameters
     R = 10
 
     xmin = -pi / 3.06
     xmax = pi / 3.06
-    vmin = -0.5
-    vmax = 0.5
+    vmin = -0.6
+    vmax = 0.6
     normalize = true
 
     # TT parameters
     TCI_tolerance = 1e-8
     maxrank = 128
     maxrank_ef = 12
-    cutoff = 1e-7
+    cutoff = 1e-10
 
     # Build phase space grids and simulation parameters
     phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
@@ -77,8 +77,16 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
     )
 
     # Build initial pivots around +- v0 in velocity space
-    ic_fn = two_stream_instability_ic(phase; A = 0.1, v0 = .2, vt = 0.01, mode = 1)
-    tt, _, _ = build_initial_tt(ic_fn, R; tolerance = params.tolerance)
+    pivots = Vector{Vector{Int}}()
+    for x_pos in [phase.xmin, 0.5 * (phase.xmin + phase.xmax), phase.xmax]
+        q_x = origcoord_to_quantics(phase.x_grid, x_pos)
+        for v_pos in [-0.2, 0.2]
+            q_v = origcoord_to_quantics(phase.v_grid, v_pos)
+            push!(pivots, interleave_bits(q_x, q_v))
+        end
+    end
+    ic_fn = two_stream_instability_ic(phase; A = 1e-3, v0 = .2, vt = 0.01, mode = 1)
+    tt, _, _ = build_initial_tt(ic_fn, R; tolerance = params.tolerance, initialpivots = pivots)
     println("Initial condition TT ranks: ", TCI.rank(tt))
 
     # Convert to ITensor MPS & MPOs
@@ -102,7 +110,6 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
 
     # Build cache for observables
     observables_cache = build_observables_cache(psi_mps, phase)
-    init_charge = total_charge(psi_mps, phase)
 
     # Half step in free streaming
     psi_mps = apply(itensor_mpos.x_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
@@ -129,16 +136,17 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
             #target_norm = init_charge,
         )
 
-        n_digits = 9
+        n_digits = 12
         elapsed_time = round(time() - loop_start_time; digits = n_digits)
         psi_plot = copy(psi_mps)
         psi_plot = apply(itensor_mpos.v_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
         @time write_data(
             step, 
             round(step * params.dt, digits=n_digits), 
-            round(real(total_charge(psi_plot, phase; cache=observables_cache)), digits=n_digits),
+            round(real(total_charge(psi_plot, phase, observables_cache)), digits=n_digits),
             round(real(electric_field_energy(ef_mps, phase)), digits=n_digits),
-            round(real(kinetic_energy(psi_plot, phase; cache=observables_cache)), digits=n_digits),
+            round(real(kinetic_energy(psi_plot, phase, observables_cache)), digits=n_digits),
+            round(real(total_momentum(psi_plot, phase, observables_cache)), digits=n_digits),
             maxlinkdim(psi_mps),
             elapsed_time,
             simulation_dir
@@ -159,19 +167,18 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
                 "results/$simulation_name/figures/phase_space_step$(step).png",
             )
 
-            # ef_snapshot = TCI.TensorTrain(ITensors.cpu(ef_mps))
-            # E_x_vals = [real.(ef_snapshot(origcoord_to_quantics(phase.x_grid, x))) for x in x_vals]
-            # Plots.savefig(
-            #     Plots.plot(
-            #         x_vals,
-            #         E_x_vals;
-            #         xlabel = "x",
-            #         ylabel = "E(x)",
-            #         title = "Electric Field at t = $(round(step * params.dt, digits = 3))",
-            #         ylim = (-0.1, 0.1),
-            #     ),
-            #     "results/$simulation_name/figures/electric_field_step$(step).png",
-            # )
+            ef_snapshot = TCI.TensorTrain(ITensors.cpu(ef_mps))
+            E_x_vals = [real.(ef_snapshot(origcoord_to_quantics(phase.x_grid, x))) for x in x_vals]
+            Plots.savefig(
+                Plots.plot(
+                    x_vals,
+                    E_x_vals;
+                    xlabel = "x",
+                    ylabel = "E(x)",
+                    title = "Electric Field at t = $(round(step * params.dt, digits = 3))",
+                ),
+                "results/$simulation_name/figures/electric_field_step$(step).png",
+            )
         end
     end
 
