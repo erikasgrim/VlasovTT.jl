@@ -13,16 +13,16 @@ using CUDA
 using Plots
 using ProgressBars
 
-function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
+function run_two_stream(; use_gpu::Bool = true, save_every::Int = 100)
 
     # Simulation parameters
-    dt = .1
-    Tfinal = 50.0
+    dt = .01
+    Tfinal = 100.0
     nsteps = Int(Tfinal / dt)
     k_cut = 2^8 # This keeps the 2^... lowest negative AND positive modes. 
-    beta = 2.0
+    beta = 10.0
 
-    simulation_name = "two_stream_unfiltered_TCI_v11"
+    simulation_name = "two_stream_unfiltered_TCI_v17"
     
     # Grid parameters
     R = 10
@@ -31,13 +31,12 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
     xmax = pi / 3.06
     vmin = -0.6
     vmax = 0.6
-    normalize = true
 
     # TT parameters
     TCI_tolerance = 1e-8
-    maxrank = 128
+    maxrank = 64
     maxrank_ef = 12
-    cutoff = 1e-10
+    cutoff = 1e-8
 
     # Build phase space grids and simulation parameters
     phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
@@ -51,7 +50,6 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
         beta = beta,
         use_gpu = use_gpu,
         alg = "naive",
-        l1_normalize = normalize,
     )
 
     # Set up simulation directories
@@ -85,7 +83,7 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
             push!(pivots, interleave_bits(q_x, q_v))
         end
     end
-    ic_fn = two_stream_instability_ic(phase; A = 1e-3, v0 = .2, vt = 0.01, mode = 1)
+    ic_fn = two_stream_instability_ic(phase; A = 1e-2, v0 = .2, vt = 0.01, mode = 1)
     tt, _, _ = build_initial_tt(ic_fn, R; tolerance = params.tolerance, initialpivots = pivots)
     println("Initial condition TT ranks: ", TCI.rank(tt))
 
@@ -133,18 +131,24 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
             mps_sites,
             previous_tci;
             params = params,
-            #target_norm = init_charge,
+        )
+
+        ef_energy_first_mode = electric_field_mode_energy(
+           ef_mps,
+           phase,
+           MPO(solver_mpos.fourier_mpo; sites = [[prime(s, 1), s] for s in siteinds(ef_mps)]);
         )
 
         n_digits = 12
         elapsed_time = round(time() - loop_start_time; digits = n_digits)
         psi_plot = copy(psi_mps)
         psi_plot = apply(itensor_mpos.v_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
-        @time write_data(
+        write_data(
             step, 
             round(step * params.dt, digits=n_digits), 
             round(real(total_charge(psi_plot, phase, observables_cache)), digits=n_digits),
             round(real(electric_field_energy(ef_mps, phase)), digits=n_digits),
+            round(real(ef_energy_first_mode), digits=n_digits),
             round(real(kinetic_energy(psi_plot, phase, observables_cache)), digits=n_digits),
             round(real(total_momentum(psi_plot, phase, observables_cache)), digits=n_digits),
             maxlinkdim(psi_mps),
