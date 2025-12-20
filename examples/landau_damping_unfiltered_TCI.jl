@@ -16,21 +16,21 @@ using ProgressBars
 function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
 
     # Simulation parameters
-    dt = .05
+    dt = .1
     Tfinal = 60.0
     nsteps = Int(Tfinal / dt)
     k_cut = 2^8 # This keeps the 2^... lowest negative AND positive modes. 
     beta = 2.0
 
-    simulation_name = "landau_damping_TCI_v1"
+    simulation_name = "landau_damping_TCI_v5"
     
     # Grid parameters
-    R = 12
+    R = 10
 
     xmin = -2pi
     xmax = 2pi
-    vmin = -3.0
-    vmax = 3.0
+    vmin = -6.0
+    vmax = 6.0
     normalize = true
 
     # TT parameters
@@ -102,7 +102,6 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
 
     # Build cache for observables
     observables_cache = build_observables_cache(psi_mps, phase)
-    init_charge = total_charge(psi_mps, phase)
 
     # Half step in free streaming
     psi_mps = apply(itensor_mpos.x_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
@@ -126,25 +125,30 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
             mps_sites,
             previous_tci;
             params = params,
-            #target_norm = init_charge,
         )
 
-        n_digits = 9
+        ef_energy_first_mode = electric_field_mode_energy(
+           ef_mps,
+           phase,
+           MPO(solver_mpos.fourier_mpo; sites = [[prime(s, 1), s] for s in siteinds(ef_mps)]);
+        )
+
+        n_digits = 12
         elapsed_time = round(time() - loop_start_time; digits = n_digits)
         psi_plot = copy(psi_mps)
         psi_plot = apply(itensor_mpos.v_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
-        @time write_data(
+        write_data(
             step, 
             round(step * params.dt, digits=n_digits), 
-            round(real(total_charge(psi_plot, phase; cache=observables_cache)), digits=n_digits),
+            round(real(total_charge(psi_plot, phase, observables_cache)), digits=n_digits),
             round(real(electric_field_energy(ef_mps, phase)), digits=n_digits),
-            round(real(kinetic_energy(psi_plot, phase; cache=observables_cache)), digits=n_digits),
+            round(real(ef_energy_first_mode), digits=n_digits),
+            round(real(kinetic_energy(psi_plot, phase, observables_cache)), digits=n_digits),
+            round(real(total_momentum(psi_plot, phase, observables_cache)), digits=n_digits),
             maxlinkdim(psi_mps),
             elapsed_time,
             simulation_dir
         )
-
-        println("-")
 
         if step % save_every == 0 || step == 1 || step == nsteps
             tt_snapshot = TCI.TensorTrain(ITensors.cpu(psi_plot))
@@ -161,19 +165,19 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
                 "results/$simulation_name/figures/phase_space_step$(step).png",
             )
 
-            # ef_snapshot = TCI.TensorTrain(ITensors.cpu(ef_mps))
-            # E_x_vals = [real.(ef_snapshot(origcoord_to_quantics(phase.x_grid, x))) for x in x_vals]
-            # Plots.savefig(
-            #     Plots.plot(
-            #         x_vals,
-            #         E_x_vals;
-            #         xlabel = "x",
-            #         ylabel = "E(x)",
-            #         title = "Electric Field at t = $(round(step * params.dt, digits = 3))",
-            #         ylim = (-0.1, 0.1),
-            #     ),
-            #     "results/$simulation_name/figures/electric_field_step$(step).png",
-            # )
+            ef_snapshot = TCI.TensorTrain(ITensors.cpu(ef_mps))
+            E_x_vals = [real.(ef_snapshot(origcoord_to_quantics(phase.x_grid, x))) for x in x_vals]
+            Plots.savefig(
+                Plots.plot(
+                    x_vals,
+                    E_x_vals;
+                    xlabel = "x",
+                    ylabel = "E(x)",
+                    title = "Electric Field at t = $(round(step * params.dt, digits = 3))",
+                    ylim = (-0.1, 0.1),
+                ),
+                "results/$simulation_name/figures/electric_field_step$(step).png",
+            )
         end
     end
 
