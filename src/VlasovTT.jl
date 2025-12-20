@@ -52,9 +52,6 @@ export
     strang_step_unfiltered_TCI!,
     strang_step_filtered_RK4!,
     strang_step_unfiltered_RK4!,
-    strang_step_v3!,
-    strang_step_v2!,
-    strang_step!,
     SolverMPOs,
     build_solver_mpos,
     prepare_itensor_mpos,
@@ -64,8 +61,10 @@ export
     total_momentum,
     ObservablesCache,
     build_observables_cache,
+    electric_field_mode_energy,
     PoissonCache,
     build_poisson_cache,
     write_parameters,
-    write_data
+    write_data,
+    read_data
 end
