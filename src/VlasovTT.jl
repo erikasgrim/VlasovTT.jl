@@ -16,7 +16,7 @@ include("operators/acceleration.jl")
 include("operators/poisson.jl")
 include("initial_conditions.jl")
 include("steppers/strang.jl")
-include("solver.jl")
+include("mpo.jl")
 include("observables.jl")
 include("write.jl")
 
