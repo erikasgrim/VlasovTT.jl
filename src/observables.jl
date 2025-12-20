@@ -40,6 +40,24 @@ function build_observables_cache(psi_mps::MPS, phase::PhaseSpaceGrids; tolerance
     return ObservablesCache(ones_mps(sites), v2_mps, v_mps)
 end
 
+function electric_field_mode_energy(
+    electric_field_mps::MPS,
+    phase::PhaseSpaceGrids,
+    fourier_mpo_it::MPO;
+    mode::Int = 1,
+)
+    electric_field_hat = apply(fourier_mpo_it, electric_field_mps; alg = "naive")
+
+    electric_field_hat_tt = TCI.TensorTrain(ITensors.cpu(electric_field_hat))
+    k_pos = n_to_k(mode, phase.M)
+    k_neg = n_to_k(-mode, phase.M)
+    qk_pos = reverse(origcoord_to_quantics(phase.kx_grid, k_pos))
+    qk_neg = reverse(origcoord_to_quantics(phase.kx_grid, k_neg))
+    energy = abs2(electric_field_hat_tt(qk_pos)) + abs2(electric_field_hat_tt(qk_neg))
+
+    return 0.5 * phase.dx * energy
+end
+
 function electric_field_energy(electric_field_mps::MPS, phase::PhaseSpaceGrids)
     # ∑ |E(x)|^2 dx
     energy_density = inner(electric_field_mps, electric_field_mps)
