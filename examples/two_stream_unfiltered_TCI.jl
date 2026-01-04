@@ -17,14 +17,14 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
 
     # Simulation parameters
     dt = .1
-    Tfinal = 50.0
+    Tfinal = 40.0
     nsteps = Int(Tfinal / dt)
     k_cut = 2^8 # This keeps the 2^... lowest negative AND positive modes. 
     beta = 10.
-    simulation_name = "two_stream_unfiltered_TCI_v1"
+    simulation_name = "two_stream_reference"
     
     # Grid parameters
-    R = 10
+    R = 12
 
     xmin = -pi / 3.06
     xmax = pi / 3.06
@@ -33,8 +33,8 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
 
     # TT parameters
     TCI_tolerance = 1e-8
-    maxrank = 164
-    maxrank_ef = 12
+    maxrank = 200
+    maxrank_ef = 16
     cutoff = 1e-8
 
     # Build phase space grids and simulation parameters
