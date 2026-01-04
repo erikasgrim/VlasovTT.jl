@@ -86,6 +86,7 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
     # Set up simulation directories
     simulation_dir = joinpath("results", simulation_name)
     figure_dir = joinpath(simulation_dir, "figures")
+    mps_dir = joinpath(simulation_dir, "mps")
     data_filepath = joinpath(simulation_dir, "data.csv")
     bond_dims_filepath = joinpath(simulation_dir, "bond_dims.csv")
     if isfile(data_filepath)
@@ -95,6 +96,7 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
         rm(bond_dims_filepath)
     end
     mkpath(figure_dir)
+    mkpath(mps_dir)
     write_parameters(params, phase, simulation_dir)
 
     # Build solver MPOs
@@ -190,6 +192,11 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
             elapsed_time,
             simulation_dir
         )
+
+        if step == 1 || step % 50 == 0
+            mps_path = joinpath(mps_dir, "psi_step$(lpad(step, 6, '0')).h5")
+            ITensors.save(mps_path, "psi", ITensors.cpu(psi_plot))
+        end
 
         if step % save_every == 0 || step == 1 || step == nsteps
             tt_snapshot = TCI.TensorTrain(ITensors.cpu(psi_plot))
