@@ -87,8 +87,12 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
     simulation_dir = joinpath("results", simulation_name)
     figure_dir = joinpath(simulation_dir, "figures")
     data_filepath = joinpath(simulation_dir, "data.csv")
+    bond_dims_filepath = joinpath(simulation_dir, "bond_dims.csv")
     if isfile(data_filepath)
         rm(data_filepath)
+    end
+    if isfile(bond_dims_filepath)
+        rm(bond_dims_filepath)
     end
     mkpath(figure_dir)
     write_parameters(params, phase, simulation_dir)
@@ -123,6 +127,10 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
 
     if params.use_gpu
         psi_mps = cu(psi_mps)
+    end
+
+    open(bond_dims_filepath, "w") do io
+        println(io, join(["bond_dim_$i" for i in 1:(length(psi_mps) - 1)], ","))
     end
 
     # Values for plotting
@@ -166,6 +174,9 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
         elapsed_time = round(time() - loop_start_time; digits = n_digits)
         psi_plot = copy(psi_mps)
         psi_plot = apply(itensor_mpos.v_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
+        open(bond_dims_filepath, "a") do io
+            println(io, join(linkdims(psi_plot), ","))
+        end
         write_data(
             step, 
             round(step * params.dt, digits=n_digits), 
