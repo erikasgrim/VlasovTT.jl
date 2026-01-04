@@ -13,16 +13,15 @@ using CUDA
 using Plots
 using ProgressBars
 
-function run_two_stream(; use_gpu::Bool = true, save_every::Int = 100)
+function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
 
     # Simulation parameters
-    dt = .01
-    Tfinal = 100.0
+    dt = .1
+    Tfinal = 50.0
     nsteps = Int(Tfinal / dt)
     k_cut = 2^8 # This keeps the 2^... lowest negative AND positive modes. 
-    beta = 10.0
-
-    simulation_name = "two_stream_unfiltered_TCI_v17"
+    beta = 10.
+    simulation_name = "two_stream_unfiltered_TCI_v1"
     
     # Grid parameters
     R = 10
@@ -34,7 +33,7 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 100)
 
     # TT parameters
     TCI_tolerance = 1e-8
-    maxrank = 64
+    maxrank = 164
     maxrank_ef = 12
     cutoff = 1e-8
 
@@ -151,6 +150,7 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 100)
             round(real(ef_energy_first_mode), digits=n_digits),
             round(real(kinetic_energy(psi_plot, phase, observables_cache)), digits=n_digits),
             round(real(total_momentum(psi_plot, phase, observables_cache)), digits=n_digits),
+            norm(psi_plot),
             maxlinkdim(psi_mps),
             elapsed_time,
             simulation_dir
