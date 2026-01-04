@@ -12,32 +12,62 @@ using CUDA
 
 using Plots
 using ProgressBars
+using Dates
 
-function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
-
+Base.@kwdef struct LandauDampingConfig
     # Simulation parameters
-    dt = .1
-    Tfinal = 60.0
-    nsteps = Int(Tfinal / dt)
-    k_cut = 2^8 # This keeps the 2^... lowest negative AND positive modes. 
-    beta = 2.0
+    dt::Float64 = 0.1
+    Tfinal::Float64 = 50.0
+    simulation_name::String = "landau_damping"
 
-    simulation_name = "landau_damping_TCI_v5"
-    
     # Grid parameters
-    R = 10
-
-    xmin = -2pi
-    xmax = 2pi
-    vmin = -6.0
-    vmax = 6.0
-    normalize = true
+    R::Int = 15
+    k_cut::Int = 2^8
+    beta::Float64 = 10.0
+    xmin::Float64 = -2pi
+    xmax::Float64 = 2pi
+    vmin::Float64 = -6.0
+    vmax::Float64 = 6.0
 
     # TT parameters
-    TCI_tolerance = 1e-8
-    maxrank = 128
-    maxrank_ef = 12
-    cutoff = 1e-8
+    TCI_tolerance::Float64 = 1e-10
+    maxrank::Int = 128
+    maxrank_ef::Int = 16
+    cutoff::Float64 = 1e-10
+end
+
+function config_to_namedtuple(config::LandauDampingConfig)
+    return (; (name => getproperty(config, name) for name in propertynames(config))...)
+end
+
+function with_overrides(config::LandauDampingConfig, overrides::NamedTuple)
+    return LandauDampingConfig(; config_to_namedtuple(config)..., overrides...)
+end
+
+function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_every::Int = 10)
+
+    # Simulation parameters
+    dt = config.dt
+    Tfinal = config.Tfinal
+    nsteps = Int(Tfinal / dt)
+
+    simulation_name = config.simulation_name
+    
+    # Grid parameters
+    R = config.R
+    k_cut = config.k_cut # This keeps the 2^... lowest negative AND positive modes. 
+    beta = config.beta
+
+    xmin = config.xmin
+    xmax = config.xmax
+    vmin = config.vmin
+    vmax = config.vmax
+
+    # TT parameters
+    TCI_tolerance = config.TCI_tolerance
+    maxrank = config.maxrank
+    maxrank_ef = config.maxrank_ef
+    cutoff = config.cutoff
 
     # Build phase space grids and simulation parameters
     phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
@@ -51,7 +81,6 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
         beta = beta,
         use_gpu = use_gpu,
         alg = "naive",
-        l1_normalize = normalize,
     )
 
     # Set up simulation directories
@@ -145,6 +174,7 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
             round(real(ef_energy_first_mode), digits=n_digits),
             round(real(kinetic_energy(psi_plot, phase, observables_cache)), digits=n_digits),
             round(real(total_momentum(psi_plot, phase, observables_cache)), digits=n_digits),
+            norm(psi_plot),
             maxlinkdim(psi_mps),
             elapsed_time,
             simulation_dir
@@ -184,4 +214,37 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
     return psi_mps
 end
 
-run_two_stream()
+function run_simulation_sweep(;
+    base_config::LandauDampingConfig = LandauDampingConfig(),
+    parameter::Symbol,
+    values,
+    sweep_name::Union{Nothing,String} = nothing,
+    use_gpu::Bool = true,
+    save_every::Int = 10,
+)
+    if !(parameter in fieldnames(LandauDampingConfig))
+        error("Unknown parameter: $(parameter). Expected one of $(fieldnames(LandauDampingConfig)).")
+    end
+
+    sweep_stamp = sweep_name === nothing ? Dates.format(now(), "yyyymmdd_HHMMSS") : sweep_name
+    sweep_dir = "sweep_" * sweep_stamp
+
+    case_index = 1
+    for value in values
+        case_config = with_overrides(base_config, NamedTuple{(parameter,)}((value,)))
+        case_base_name = case_config.simulation_name
+        case_id = "case_" * lpad(case_index, 3, '0')
+        case_config = with_overrides(
+            case_config,
+            (simulation_name = joinpath(case_base_name, sweep_dir, case_id),),
+        )
+        run_simulation(case_config; use_gpu = use_gpu, save_every = save_every)
+        case_index += 1
+    end
+end
+
+run_simulation_sweep(
+    parameter = :k_cut,
+    values = [2^7],
+    sweep_name = "kcut",
+)
