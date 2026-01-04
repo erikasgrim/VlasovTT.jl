@@ -8,6 +8,8 @@ import TensorCrossInterpolation as TCI
 using ITensorMPS
 using ITensors
 
+using HDF5
+
 using CUDA
 
 using Plots
@@ -17,11 +19,11 @@ using Dates
 Base.@kwdef struct LandauDampingConfig
     # Simulation parameters
     dt::Float64 = 0.1
-    Tfinal::Float64 = 50.0
+    Tfinal::Float64 = 30.0
     simulation_name::String = "landau_damping"
 
     # Grid parameters
-    R::Int = 15
+    R::Int = 12
     k_cut::Int = 2^8
     beta::Float64 = 10.0
     xmin::Float64 = -2pi
@@ -30,10 +32,10 @@ Base.@kwdef struct LandauDampingConfig
     vmax::Float64 = 6.0
 
     # TT parameters
-    TCI_tolerance::Float64 = 1e-10
-    maxrank::Int = 128
+    TCI_tolerance::Float64 = 1e-8
+    maxrank::Int = 200
     maxrank_ef::Int = 16
-    cutoff::Float64 = 1e-10
+    cutoff::Float64 = 1e-8
 end
 
 function config_to_namedtuple(config::LandauDampingConfig)
@@ -194,8 +196,10 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
         )
 
         if step == 1 || step % 50 == 0
-            mps_path = joinpath(mps_dir, "psi_step$(lpad(step, 6, '0')).h5")
-            ITensors.save(mps_path, "psi", ITensors.cpu(psi_plot))
+            mps_path = joinpath(mps_dir, "psi_step$(step).h5")
+            f = h5open(mps_path, "w")
+            write(f, "psi", ITensors.cpu(psi_plot))
+            close(f)
         end
 
         if step % save_every == 0 || step == 1 || step == nsteps
@@ -262,7 +266,7 @@ function run_simulation_sweep(;
 end
 
 run_simulation_sweep(
-    parameter = :k_cut,
-    values = [2^7],
-    sweep_name = "kcut",
+    parameter = :cutoff,
+    values = [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4],
+    sweep_name = "cutoff",
 )
