@@ -8,34 +8,67 @@ import TensorCrossInterpolation as TCI
 using ITensorMPS
 using ITensors
 
+using HDF5
+
 using CUDA
 
 using Plots
 using ProgressBars
+using Dates
 
-function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
-
+Base.@kwdef struct TwoStreamConfig
     # Simulation parameters
-    dt = .1
-    Tfinal = 40.0
-    nsteps = Int(Tfinal / dt)
-    k_cut = 2^8 # This keeps the 2^... lowest negative AND positive modes. 
-    beta = 10.
-    simulation_name = "two_stream_reference"
-    
-    # Grid parameters
-    R = 12
+    dt::Float64 = 0.1
+    Tfinal::Float64 = 35.0
+    simulation_name::String = "two_stream"
 
-    xmin = -pi / 3.06
-    xmax = pi / 3.06
-    vmin = -0.6
-    vmax = 0.6
+    # Grid parameters
+    R::Int = 10
+    k_cut::Int = 2^8
+    beta::Float64 = 2.0
+    xmin::Float64 = -pi / 3.06
+    xmax::Float64 = pi / 3.06
+    vmin::Float64 = -0.6
+    vmax::Float64 = 0.6
 
     # TT parameters
-    TCI_tolerance = 1e-8
-    maxrank = 200
-    maxrank_ef = 16
-    cutoff = 1e-8
+    TCI_tolerance::Float64 = 1e-9
+    maxrank::Int = 200
+    maxrank_ef::Int = 16
+    cutoff::Float64 = 1e-8
+end
+
+function config_to_namedtuple(config::TwoStreamConfig)
+    return (; (name => getproperty(config, name) for name in propertynames(config))...)
+end
+
+function with_overrides(config::TwoStreamConfig, overrides::NamedTuple)
+    return TwoStreamConfig(; config_to_namedtuple(config)..., overrides...)
+end
+
+function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_every::Int = 10)
+
+    # Simulation parameters
+    dt = config.dt
+    Tfinal = config.Tfinal
+    nsteps = Int(Tfinal / dt)
+    simulation_name = config.simulation_name
+    
+    # Grid parameters
+    R = config.R
+    k_cut = config.k_cut # This keeps the 2^... lowest negative AND positive modes.
+    beta = config.beta
+
+    xmin = config.xmin
+    xmax = config.xmax
+    vmin = config.vmin
+    vmax = config.vmax
+
+    # TT parameters
+    TCI_tolerance = config.TCI_tolerance
+    maxrank = config.maxrank
+    maxrank_ef = config.maxrank_ef
+    cutoff = config.cutoff
 
     # Build phase space grids and simulation parameters
     phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
@@ -54,11 +87,17 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
     # Set up simulation directories
     simulation_dir = joinpath("results", simulation_name)
     figure_dir = joinpath(simulation_dir, "figures")
+    mps_dir = joinpath(simulation_dir, "mps")
     data_filepath = joinpath(simulation_dir, "data.csv")
+    bond_dims_filepath = joinpath(simulation_dir, "bond_dims.csv")
     if isfile(data_filepath)
         rm(data_filepath)
     end
+    if isfile(bond_dims_filepath)
+        rm(bond_dims_filepath)
+    end
     mkpath(figure_dir)
+    mkpath(mps_dir)
     write_parameters(params, phase, simulation_dir)
 
     # Build solver MPOs
@@ -99,6 +138,10 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
 
     if params.use_gpu
         psi_mps = cu(psi_mps)
+    end
+
+    open(bond_dims_filepath, "w") do io
+        println(io, join(["bond_dim_$i" for i in 1:(length(psi_mps) - 1)], ","))
     end
 
     # Values for plotting
@@ -142,6 +185,9 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
         elapsed_time = round(time() - loop_start_time; digits = n_digits)
         psi_plot = copy(psi_mps)
         psi_plot = apply(itensor_mpos.v_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
+        open(bond_dims_filepath, "a") do io
+            println(io, join(linkdims(psi_mps), ","))
+        end
         write_data(
             step, 
             round(step * params.dt, digits=n_digits), 
@@ -155,6 +201,13 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
             elapsed_time,
             simulation_dir
         )
+
+        if step == 1 || step % 50 == 0
+            mps_path = joinpath(mps_dir, "psi_step$(step).h5")
+            f = h5open(mps_path, "w")
+            write(f, "psi", ITensors.cpu(psi_plot))
+            close(f)
+        end
 
         if step % save_every == 0 || step == 1 || step == nsteps
             tt_snapshot = TCI.TensorTrain(ITensors.cpu(psi_plot))
@@ -189,4 +242,37 @@ function run_two_stream(; use_gpu::Bool = true, save_every::Int = 10)
     return psi_mps
 end
 
-run_two_stream()
+function run_simulation_sweep(;
+    base_config::TwoStreamConfig = TwoStreamConfig(),
+    parameter::Symbol,
+    values,
+    sweep_name::Union{Nothing,String} = nothing,
+    use_gpu::Bool = true,
+    save_every::Int = 10,
+)
+    if !(parameter in fieldnames(TwoStreamConfig))
+        error("Unknown parameter: $(parameter). Expected one of $(fieldnames(TwoStreamConfig)).")
+    end
+
+    sweep_stamp = sweep_name === nothing ? Dates.format(now(), "yyyymmdd_HHMMSS") : sweep_name
+    sweep_dir = "sweep_" * sweep_stamp
+
+    case_index = 1
+    for value in values
+        case_config = with_overrides(base_config, NamedTuple{(parameter,)}((value,)))
+        case_base_name = case_config.simulation_name
+        case_id = "case_" * lpad(case_index, 3, '0')
+        case_config = with_overrides(
+            case_config,
+            (simulation_name = joinpath(case_base_name, sweep_dir, case_id),),
+        )
+        run_simulation(case_config; use_gpu = use_gpu, save_every = save_every)
+        case_index += 1
+    end
+end
+
+run_simulation_sweep(
+    parameter = :cutoff,
+    values = [1e-7, 1e-8, 1e-9, 1e-10],
+    sweep_name = "cutoff",
+)
