@@ -3,15 +3,27 @@ using LaTeXStrings
 using VlasovTT: read_data
 
 let 
-    directory_path = "results/landau_damping_TCI_v5/"
+    directory_path = "results/landau_damping/sweep_cutoff/case_001/"
     filepath = joinpath(directory_path, "data.csv")
     data = read_data(filepath)
     times = data.times
     ef_energy = data.ef_energy
     ef_energy_mode1 = data.ef_energy_mode1
 
+    t_max = 25.0
+    t_mask = times .<= t_max
+    times = times[t_mask]
+    ef_energy = ef_energy[t_mask]
+    ef_energy_mode1 = ef_energy_mode1[t_mask]
+    bond_dimensions = data.bond_dimensions[t_mask]
+
     # Extract the indices of local maximima of the electric field energy
-    ef_max_indices = findall(i -> (i > 1 && i < length(ef_energy_mode1)) && (ef_energy_mode1[i] > ef_energy_mode1[i-1]) && (ef_energy_mode1[i] > ef_energy_mode1[i+1]), 1:length(ef_energy))
+    ef_max_indices = findall(
+        i -> (i > 1 && i < length(ef_energy_mode1)) &&
+            (ef_energy_mode1[i] > ef_energy_mode1[i-1]) &&
+            (ef_energy_mode1[i] > ef_energy_mode1[i+1]),
+        1:length(ef_energy_mode1),
+    )
     ef_max_times = times[ef_max_indices]
     log_ef_max_values = log.(ef_energy_mode1[ef_max_indices])
     matrix = hcat(2 .* ef_max_times, ones(length(ef_max_times)))
@@ -54,7 +66,7 @@ let
 
     bonddim_plt = plot(
         times,
-        data.bond_dimensions,
+        bond_dimensions,
         xlabel = L"t\ [\omega_{pe}^{-1}]",
         ylabel = L"\chi",
         label = L"\mathrm{Numerical}",
