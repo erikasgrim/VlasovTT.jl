@@ -172,8 +172,7 @@ function strang_step_unfiltered_TCI!(
         E_val = electric_field_tt(q_x_buf)
 
         phase_angle = E_val * kv_phys * params.dt
-        return exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(kv_phys; beta=params.beta, k_cut=params.k_cut)
-        #return ( 1 + im * phase_angle - phase_angle^2 / 2 - im * phase_angle^3 / 6 + phase_angle^4 / 24 ) * psi_tt(q_bits) * frequency_filter(kv_phys; beta=params.beta, k_cut=params.k_cut)
+        return exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(n_v; beta=params.beta, k_cut=params.k_cut)
     end
     kernel = TCI.CachedFunction{ComplexF64}(kernel, fill(2, 2*phase.R))
 
@@ -230,6 +229,7 @@ function strang_step_unfiltered_TCI!(
 
     # Free streaming step
     psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    
     # Inverse Fourier transform in x
     psi_mps = apply(x_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
 
