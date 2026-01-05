@@ -18,8 +18,8 @@ using Dates
 
 Base.@kwdef struct TwoStreamConfig
     # Simulation parameters
-    dt::Float64 = 0.1
-    Tfinal::Float64 = 35.0
+    dt::Float64 = 0.05
+    Tfinal::Float64 = 30.0
     simulation_name::String = "two_stream"
 
     # Grid parameters
@@ -32,9 +32,9 @@ Base.@kwdef struct TwoStreamConfig
     vmax::Float64 = 0.6
 
     # TT parameters
-    TCI_tolerance::Float64 = 1e-9
+    TCI_tolerance::Float64 = 1e-8
     maxrank::Int = 200
-    maxrank_ef::Int = 16
+    maxrank_ef::Int = 12
     cutoff::Float64 = 1e-8
 end
 
@@ -273,6 +273,6 @@ end
 
 run_simulation_sweep(
     parameter = :cutoff,
-    values = [1e-7, 1e-8, 1e-9, 1e-10],
+    values = [1e-8, 1e-7, 1e-9],
     sweep_name = "cutoff",
 )
