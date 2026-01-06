@@ -24,7 +24,7 @@ Base.@kwdef struct TwoStreamConfig
 
     # Grid parameters
     R::Int = 10
-    k_cut::Int = 2^8
+    k_cut::Int = 2^7
     beta::Float64 = 2.0
     xmin::Float64 = -pi / 3.06
     xmax::Float64 = pi / 3.06
@@ -158,22 +158,30 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
     psi_mps = apply(itensor_mpos.v_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
 
     previous_tci = nothing
+    ef_mps = nothing
     loop_start_time = time()
     iter = ProgressBar(1:nsteps)
     for step in iter
-        psi_mps, ef_mps, previous_tci = strang_step_unfiltered_TCI!(
-            psi_mps,
-            phase,
-            solver_mpos.full_poisson_mpo,
-            itensor_mpos.full_free_stream_fourier,
-            itensor_mpos.x_fourier,
-            itensor_mpos.x_inv_fourier,
-            itensor_mpos.v_fourier,
-            itensor_mpos.v_inv_fourier,
-            mps_sites,
-            previous_tci;
-            params = params,
-        )
+        try
+            psi_mps, ef_mps, previous_tci = strang_step_unfiltered_TCI!(
+                psi_mps,
+                phase,
+                solver_mpos.full_poisson_mpo,
+                itensor_mpos.full_free_stream_fourier,
+                itensor_mpos.x_fourier,
+                itensor_mpos.x_inv_fourier,
+                itensor_mpos.v_fourier,
+                itensor_mpos.v_inv_fourier,
+                mps_sites,
+                previous_tci;
+                params = params,
+            )
+        catch err
+            @error "strang_step_unfiltered_TCI! failed" exception = err
+            break
+        end
+
+        n_digits = 12
 
         ef_energy_first_mode = electric_field_mode_energy(
            ef_mps,
@@ -181,8 +189,8 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
            MPO(solver_mpos.fourier_mpo; sites = [[prime(s, 1), s] for s in siteinds(ef_mps)]);
         )
 
-        n_digits = 12
         elapsed_time = round(time() - loop_start_time; digits = n_digits)
+        
         psi_plot = copy(psi_mps)
         psi_plot = apply(itensor_mpos.v_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
         open(bond_dims_filepath, "a") do io
@@ -273,6 +281,6 @@ end
 
 run_simulation_sweep(
     parameter = :cutoff,
-    values = [1e-8, 1e-7, 1e-9],
-    sweep_name = "cutoff",
+    values = [1e-8],
+    sweep_name = "cutoff3",
 )
