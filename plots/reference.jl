@@ -10,11 +10,11 @@ using VlasovTT: read_data, PhaseSpaceGrids
 include(joinpath("plot_defaults.jl"))
 PlotDefaults.apply!()
 
-two_stream_ref = "results/two_stream/sweep_cutoff/case_001"
+two_stream_ref = "final_results/two_stream/sweep_cutoff/case_003"
 two_stream_data = joinpath(two_stream_ref, "data.csv")
 two_stream_data = read_data(two_stream_data)
 
-landau_ref = "results/landau_damping/sweep_cutoff/case_001"
+landau_ref = "final_results/landau_damping/sweep_cutoff/case_001"
 landau_data = joinpath(landau_ref, "data.csv")
 landau_data = read_data(landau_data)
 
@@ -54,30 +54,38 @@ p1 = plot(
     landau_data.times,
     [landau_data.ef_energy, landau_analytic],
     xlabel = L"t\ [\omega_{pe}^{-1}]",
-    ylabel = L"\mathcal{E}_1",
+    ylabel = L"\mathcal{E}",
     yaxis = :log10,
     linestyle = [:solid :dot],
     color = [1 :black],
-    label = L"Two-Stream Reference",
-    legend = nothing
+    label = L"Analytic ($\gamma = 0.1514)$",
+    legend = nothing,
 )
 
 ts_gamma = 0.35355
-t_min = 3.0
-tmax = 15.0
+tmin = 3.0
+tmax = 17.0
 ts_analytic = 3e-7 .* exp.(2 * ts_gamma .* two_stream_data.times)
+linear_indices = findall(i -> (two_stream_data.times[i] >= tmin) && (two_stream_data.times[i] <= tmax), 1:length(two_stream_data.ef_energy))
 
 p2 = plot(
     two_stream_data.times,
-    [two_stream_data.ef_energy, ts_analytic],
+    two_stream_data.ef_energy,
     xlabel = L"t\ [\omega_{pe}^{-1}]",
-    ylabel = L"\mathcal{E}_1",
+    ylabel = L"\mathcal{E}",
     yaxis = :log10,
-    linestyle = [:solid :dot],
-    color = [1 :black],
-    label = L"Numerical",
-    legend = nothing
+    linestyle = :solid,
+    label = "Simulation",
+    legend = nothing,
+)
 
+p2 = plot!(
+    p2,
+    two_stream_data.times[linear_indices],
+    ts_analytic[linear_indices],
+    linestyle = :dot,
+    color = :black,
+    label = L"Analytic ($\gamma = 0.3535$)",
 )
 
 p3_mps_path = joinpath(landau_ref, "mps", "psi_step1.h5")
@@ -88,8 +96,8 @@ end
 R, xmin, xmax, vmin, vmax = read_grid_params(joinpath(landau_ref, "simulation_params.txt"))
 phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
 
-x_vals = range(phase.xmin, phase.xmax; length = 100)
-v_vals = range(phase.vmin, phase.vmax; length = 100)
+x_vals = range(phase.xmin, phase.xmax; length = 200)
+v_vals = range(phase.vmin, phase.vmax; length = 200)
 tt_snapshot = QuanticsTCI.TensorTrain(ITensors.cpu(psi_mps))
 f_vals = [tt_snapshot(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
 
@@ -144,8 +152,8 @@ R_ts, xmin_ts, xmax_ts, vmin_ts, vmax_ts = read_grid_params(two_stream_params)
 dt_ts = read_time_step(two_stream_params)
 phase_ts = PhaseSpaceGrids(R_ts, xmin_ts, xmax_ts, vmin_ts, vmax_ts)
 
-x_vals_ts = range(phase_ts.xmin, phase_ts.xmax; length = 100)
-v_vals_ts = range(phase_ts.vmin, phase_ts.vmax; length = 100)
+x_vals_ts = range(phase_ts.xmin, phase_ts.xmax; length = 200)
+v_vals_ts = range(phase_ts.vmin, phase_ts.vmax; length = 200)
 
 p6_mps_path = joinpath(two_stream_ref, "mps", "psi_step1.h5")
 psi_mps_ts_1 = h5open(p6_mps_path, "r") do file
@@ -160,12 +168,12 @@ p6 = heatmap(
     legend = nothing,
     #xlabel = L"x",
     ylabel = L"v",
-    title = "t = $(round(1 * dt_ts, digits = 3))",
+    title = L"$t = 0$",
     xticks = two_stream_xticks,
     yticks = two_stream_yticks,
 )
 
-p7_mps_path = joinpath(two_stream_ref, "mps", "psi_step150.h5")
+p7_mps_path = joinpath(two_stream_ref, "mps", "psi_step300.h5")
 psi_mps_ts_150 = h5open(p7_mps_path, "r") do file
     read(file, "psi", MPS)
 end
@@ -177,12 +185,12 @@ p7 = heatmap(
     abs.(f_vals_ts_150);
     legend = nothing,
     xlabel = L"x",
-    title = "t = $(round(150 * dt_ts, digits = 3))",
+    title = L"$t = 15$",
     xticks = two_stream_xticks,
     yticks = nothing,
 )
 
-p8_mps_path = joinpath(two_stream_ref, "mps", "psi_step250.h5")
+p8_mps_path = joinpath(two_stream_ref, "mps", "psi_step400.h5")
 psi_mps_ts_300 = h5open(p8_mps_path, "r") do file
     read(file, "psi", MPS)
 end
@@ -194,7 +202,7 @@ p8 = heatmap(
     abs.(f_vals_ts_300);
     legend = nothing,
     #xlabel = L"x",
-    title = "t = $(round(300 * dt_ts, digits = 3))",
+    title = L"$t = 20$",
     xticks = two_stream_xticks,
     yticks = nothing,
 )
