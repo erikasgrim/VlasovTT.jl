@@ -60,6 +60,8 @@ p1 = plot(
     color = [1 :black],
     label = L"Analytic ($\gamma = 0.1514)$",
     legend = nothing,
+    title = "(a)",
+    titlelocation = :left,
 )
 
 ts_gamma = 0.35355
@@ -77,6 +79,8 @@ p2 = plot(
     linestyle = :solid,
     label = "Simulation",
     legend = nothing,
+    title = "(b)",
+    titlelocation = :left,
 )
 
 p2 = plot!(
@@ -108,7 +112,8 @@ p3 = heatmap(
     legend = nothing,
     #xlabel = L"x",
     ylabel = L"v",
-    title = L"t = 0",
+    title = L"(c) $t = 0$",
+    titlelocation = :left,
     xticks = landau_xticks,
     yticks = landau_yticks,
 )
@@ -125,7 +130,8 @@ p4 = heatmap(
     abs.(f_vals_150);
     legend = nothing,
     xlabel = L"x",
-    title = L"t = 15",
+    title = L"(d) $t = 15$",
+    titlelocation = :left,
     xticks = landau_xticks,
     yticks = nothing
 )
@@ -142,7 +148,8 @@ p5 = heatmap(
     abs.(f_vals_300);
     legend = nothing,
     #xlabel = L"x",
-    title = L"t = 30",
+    title = L"(e) $t = 30$",
+    titlelocation = :left,
     xticks = landau_xticks,
     yticks = nothing
 )
@@ -168,7 +175,8 @@ p6 = heatmap(
     legend = nothing,
     #xlabel = L"x",
     ylabel = L"v",
-    title = L"$t = 0$",
+    title = L"(f) $t = 0$",
+    titlelocation = :left,
     xticks = two_stream_xticks,
     yticks = two_stream_yticks,
 )
@@ -185,7 +193,8 @@ p7 = heatmap(
     abs.(f_vals_ts_150);
     legend = nothing,
     xlabel = L"x",
-    title = L"$t = 15$",
+    title = L"(g) $t = 15$",
+    titlelocation = :left,
     xticks = two_stream_xticks,
     yticks = nothing,
 )
@@ -202,7 +211,8 @@ p8 = heatmap(
     abs.(f_vals_ts_300);
     legend = nothing,
     #xlabel = L"x",
-    title = L"$t = 20$",
+    title = L"(h) $t = 20$",
+    titlelocation = :left,
     xticks = two_stream_xticks,
     yticks = nothing,
 )
