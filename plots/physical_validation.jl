@@ -223,4 +223,4 @@ plt = plot(p1, p2, p3, p4, p5, p6, p7, p8; layout = l)
 
 # Save figure
 mkpath("paper_figures")
-savefig(plt, "plots/paper_figures/reference_plot.pdf")
+savefig(plt, "plots/paper_figures/physical_validation.pdf")
