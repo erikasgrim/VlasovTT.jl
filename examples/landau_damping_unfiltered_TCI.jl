@@ -19,12 +19,12 @@ using Dates
 Base.@kwdef struct LandauDampingConfig
     # Simulation parameters
     dt::Float64 = 0.1
-    Tfinal::Float64 = 25.0
+    Tfinal::Float64 = 30.0
     simulation_name::String = "landau_damping"
 
     # Grid parameters
     R::Int = 10
-    k_cut::Int = 2^8
+    k_cut::Int = 2^6
     beta::Float64 = 2.0
     xmin::Float64 = -2pi
     xmax::Float64 = 2pi
@@ -32,7 +32,7 @@ Base.@kwdef struct LandauDampingConfig
     vmax::Float64 = 6.0
 
     # TT parameters
-    TCI_tolerance::Float64 = 1e-9
+    TCI_tolerance::Float64 = 1e-8
     maxrank::Int = 200
     maxrank_ef::Int = 16
     cutoff::Float64 = 1e-8
@@ -151,22 +151,34 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
     psi_mps = apply(itensor_mpos.v_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
 
     previous_tci = nothing
+    ef_mps = nothing
     loop_start_time = time()
     iter = ProgressBar(1:nsteps)
     for step in iter
-        psi_mps, ef_mps, previous_tci = strang_step_unfiltered_TCI!(
-            psi_mps,
-            phase,
-            solver_mpos.full_poisson_mpo,
-            itensor_mpos.full_free_stream_fourier,
-            itensor_mpos.x_fourier,
-            itensor_mpos.x_inv_fourier,
-            itensor_mpos.v_fourier,
-            itensor_mpos.v_inv_fourier,
-            mps_sites,
-            previous_tci;
-            params = params,
-        )
+        try
+            psi_mps, ef_mps, previous_tci = strang_step_unfiltered_TCI!(
+                psi_mps,
+                phase,
+                solver_mpos.full_poisson_mpo,
+                itensor_mpos.full_free_stream_fourier,
+                itensor_mpos.x_fourier,
+                itensor_mpos.x_inv_fourier,
+                itensor_mpos.v_fourier,
+                itensor_mpos.v_inv_fourier,
+                mps_sites,
+                previous_tci;
+                params = params,
+            )
+        catch err
+            @error "strang_step_unfiltered_TCI! failed" exception = err
+            break
+        end
+
+        # Renormalize psi to conserve charge (L1 norm)
+        charge = real(total_charge_kv(psi_mps, phase))
+        psi_mps .= psi_mps / charge * phase.Lx
+
+        n_digits = 12
 
         ef_energy_first_mode = electric_field_mode_energy(
            ef_mps,
@@ -174,7 +186,6 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
            MPO(solver_mpos.fourier_mpo; sites = [[prime(s, 1), s] for s in siteinds(ef_mps)]);
         )
 
-        n_digits = 12
         elapsed_time = round(time() - loop_start_time; digits = n_digits)
         psi_plot = copy(psi_mps)
         psi_plot = apply(itensor_mpos.v_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
@@ -186,7 +197,7 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
         write_data(
             step, 
             round(step * params.dt, digits=n_digits), 
-            round(real(total_charge(psi_plot, phase, observables_cache)), digits=n_digits),
+            round(charge, digits=n_digits),
             round(real(electric_field_energy(ef_mps, phase)), digits=n_digits),
             round(real(ef_energy_first_mode), digits=n_digits),
             round(real(kinetic_energy(psi_plot, phase, observables_cache)), digits=n_digits),
@@ -269,6 +280,6 @@ end
 
 run_simulation_sweep(
     parameter = :cutoff,
-    values = [1e-9, 1e-8, 1e-7, 1e-6],
-    sweep_name = "cutoff2",
+    values = [1e-9],
+    sweep_name = "cutoff",
 )

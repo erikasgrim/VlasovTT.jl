@@ -24,7 +24,7 @@ Base.@kwdef struct TwoStreamConfig
 
     # Grid parameters
     R::Int = 10
-    k_cut::Int = 2^7
+    k_cut::Int = 2^6 # Keep 2^6 lowest negative AND positive modes.
     beta::Float64 = 2.0
     xmin::Float64 = -pi / 3.06
     xmax::Float64 = pi / 3.06
@@ -118,7 +118,7 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
         q_x = origcoord_to_quantics(phase.x_grid, x_pos)
         for v_pos in [-0.2, 0.2]
             q_v = origcoord_to_quantics(phase.v_grid, v_pos)
-            push!(pivots, interleave_bits(q_x, q_v))
+            push!(pivots, VlasovTT.interleave_bits(q_x, q_v))
         end
     end
     ic_fn = two_stream_instability_ic(phase; A = 1e-2, v0 = .2, vt = 0.01, mode = 1)
@@ -180,6 +180,10 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
             @error "strang_step_unfiltered_TCI! failed" exception = err
             break
         end
+
+        # Renormalize psi to conserve charge (L1 norm)
+        charge = real(total_charge_kv(psi_mps, phase))
+        psi_mps .= psi_mps / charge * phase.Lx
 
         n_digits = 12
 
@@ -281,6 +285,6 @@ end
 
 run_simulation_sweep(
     parameter = :cutoff,
-    values = [1e-8],
-    sweep_name = "cutoff3",
+    values = [1e-6, 1e-7],
+    sweep_name = "cutoff",
 )

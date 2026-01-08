@@ -71,6 +71,14 @@ function total_charge(psi_mps::MPS, phase::PhaseSpaceGrids, cache::Union{Observa
     return charge * phase.dx * phase.dv
 end
 
+function total_charge_kv(psi_mps::MPS, phase::PhaseSpaceGrids)
+    # Project v sites to k_v = 0, then integrate over x.
+    cd_mps = get_charge_density_kv(psi_mps; dv=sqrt(phase.M) * phase.dv)  # x-only MPS
+    ones_x = ones_mps(siteinds(cd_mps))
+    charge = inner(ones_x, ITensors.cpu(cd_mps))
+    return charge * phase.dx
+end
+
 function kinetic_energy(psi_mps::MPS, phase::PhaseSpaceGrids, cache::Union{ObservablesCache,Nothing})
     # 0.5 ∑ v^2 f(x,v) dx dv
     f_mps_cpu = ITensors.cpu(psi_mps)
