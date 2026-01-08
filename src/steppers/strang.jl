@@ -91,12 +91,12 @@ function strang_step_filtered_TCI!(
         )[1]
     else
         TCI.optimize!(
-            previous_tci, 
-            kernel; 
-            tolerance = params.tolerance, 
-            maxbonddim = params.maxrank, 
+            previous_tci,
+            kernel;
+            tolerance = params.tolerance,
+            maxbonddim = params.maxrank,
             verbosity = 0,
-            )
+        )
         psi_tt = previous_tci
     end
 
@@ -141,7 +141,8 @@ function strang_step_unfiltered_TCI!(
     mps_sites,
     previous_tci;
     params::SimulationParams,
-)
+)   
+    steptime_start = time()
 
     # Get electric field MPO
     _, electric_field_mps = get_electric_field_mps_kv(
@@ -176,7 +177,6 @@ function strang_step_unfiltered_TCI!(
     end
     kernel = TCI.CachedFunction{ComplexF64}(kernel, fill(2, 2*phase.R))
 
-    
     # if previous_tci === nothing
     #     pivots = acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true)
     # else
@@ -194,6 +194,7 @@ function strang_step_unfiltered_TCI!(
     #     verbosity = 1
     # )[1]
 
+    tci_start = time()
     if previous_tci === nothing
         pivots = acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true)
 
@@ -215,12 +216,14 @@ function strang_step_unfiltered_TCI!(
             )
         psi_tt = previous_tci
     end
+    tci_time = time() - tci_start
 
     psi_mps = MPS(psi_tt; sites = mps_sites)
     if params.use_gpu
         psi_mps = cu(psi_mps)
     end
-
+    
+    mpo_start = time()
     # Inverse Fourier transform in v
     psi_mps = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
 
@@ -235,8 +238,10 @@ function strang_step_unfiltered_TCI!(
 
     # Fourier transform in v
     psi_mps = apply(v_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    mpo_time = time() - mpo_start
+    step_time = time() - steptime_start
 
-    return psi_mps, electric_field_mps, psi_tt
+    return psi_mps, electric_field_mps, psi_tt, (tci_time, mpo_time, step_time)
 end
 
 function strang_step_filtered_RK4!(

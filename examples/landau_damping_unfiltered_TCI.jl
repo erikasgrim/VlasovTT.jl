@@ -24,7 +24,7 @@ Base.@kwdef struct LandauDampingConfig
 
     # Grid parameters
     R::Int = 10
-    k_cut::Int = 2^6
+    k_cut::Int = 2^7
     beta::Float64 = 2.0
     xmin::Float64 = -2pi
     xmax::Float64 = 2pi
@@ -152,11 +152,12 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
 
     previous_tci = nothing
     ef_mps = nothing
+    timings = nothing
     loop_start_time = time()
     iter = ProgressBar(1:nsteps)
     for step in iter
         try
-            psi_mps, ef_mps, previous_tci = strang_step_unfiltered_TCI!(
+            psi_mps, ef_mps, previous_tci, timings = strang_step_unfiltered_TCI!(
                 psi_mps,
                 phase,
                 solver_mpos.full_poisson_mpo,
@@ -179,6 +180,7 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
         psi_mps .= psi_mps / charge * phase.Lx
 
         n_digits = 12
+        tci_time, mpo_time, step_time = timings
 
         ef_energy_first_mode = electric_field_mode_energy(
            ef_mps,
@@ -189,6 +191,14 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
         elapsed_time = round(time() - loop_start_time; digits = n_digits)
         psi_plot = copy(psi_mps)
         psi_plot = apply(itensor_mpos.v_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
+
+        write_runtimes(
+            step,
+            round(tci_time, digits = n_digits),
+            round(mpo_time, digits = n_digits),
+            round(step_time, digits = n_digits),
+            simulation_dir,
+        )
 
         open(bond_dims_filepath, "a") do io
             println(io, join(linkdims(psi_mps), ","))

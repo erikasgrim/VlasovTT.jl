@@ -40,5 +40,6 @@ export
     build_observables_cache,
     electric_field_mode_energy,
     write_parameters,
+    write_runtimes,
     write_data
 end

@@ -43,6 +43,23 @@ function write_data(
     end
 end
 
+function write_runtimes(
+    step::Int,
+    tci_time::Real,
+    mpo_time::Real,
+    step_time::Real,
+    directory::String,
+)
+    filepath = joinpath(directory, "runtime.csv")
+    needs_header = !isfile(filepath) || filesize(filepath) == 0
+    open(filepath, "a") do io
+        if needs_header
+            println(io, "step,tci_time,mpo_time,step_time")
+        end
+        println(io, "$(step),$(tci_time),$(mpo_time),$(step_time)")
+    end
+end
+
 function read_data(filepath::String)
     steps = Int[]
     times = Float64[]
