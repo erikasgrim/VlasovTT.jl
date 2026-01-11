@@ -1,0 +1,15 @@
+Simulation Parameters:
+dt = 0.1
+tolerance = 1.0e-8
+SVD_tolerance = 1.0e-8
+maxrank = 200
+maxrank_ef = 32
+k_cut = 64
+beta = 2.0
+v0 = 0.0
+Grid Parameters:
+R = 10
+xmin = -6.283185307179586
+xmax = 6.283185307179586
+vmin = -6.0
+vmax = 6.0
