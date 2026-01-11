@@ -18,7 +18,7 @@ using Dates
 
 Base.@kwdef struct TwoStreamConfig
     # Simulation parameters
-    dt::Float64 = 0.05
+    dt::Float64 = 0.1
     Tfinal::Float64 = 30.0
     simulation_name::String = "two_stream"
 
@@ -294,6 +294,6 @@ end
 
 run_simulation_sweep(
     parameter = :cutoff,
-    values = [1e-6, 1e-7],
+    values = [1e-8],
     sweep_name = "cutoff",
 )

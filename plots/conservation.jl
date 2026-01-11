@@ -1,4 +1,5 @@
 using Plots
+using Plots.PlotMeasures
 using LaTeXStrings
 using VlasovTT: read_data
 
@@ -6,7 +7,7 @@ include(joinpath("plot_defaults.jl"))
 PlotDefaults.apply!()
 
 ts_dir = "final_results/two_stream/sweep_cutoff/"
-landau_dir = "final_results/landau_damping/sweep_cutoff4/"
+landau_dir = "final_results/landau_damping/sweep_cutoff/"
 
 function read_sweep(dir)
     entries = sort(filter(isdir, readdir(dir; join = true)))
@@ -56,6 +57,7 @@ p1 = plot(
     legend = nothing,
     xticks = :none,
     yaxis = :log10,
+    left_margin = 2mm,
 )
 for s in landau_sets
     times, values = drop_first(s.data.times, rel_dev(s.data.total_energy))
@@ -81,6 +83,7 @@ p3 = plot(
     legend = nothing,
     xticks = :none,
     yaxis = :log10,
+    left_margin = 2mm,
 )
 for s in landau_sets
     times, values = drop_first(s.data.times, abs_dev(s.data.momentum))
@@ -99,31 +102,6 @@ for s in ts_sets
     plot!(p4, times, values; label = s.name)
 end
 
-p5 = plot(
-    xlabel = L"t\ [\omega_{pe}^{-1}]",
-    ylabel = L"|\Delta Q| / |Q_0|",
-    title = "(e)",
-    titlelocation = :left,
-    legend = nothing,
-    yaxis = :log10,
-)
-for s in landau_sets
-    times, values = drop_first(s.data.times, rel_dev(s.data.charges))
-    plot!(p5, times, values; label = s.name)
-end
-
-p6 = plot(
-    xlabel = L"t\ [\omega_{pe}^{-1}]",
-    title = "(f)",
-    titlelocation = :left,
-    legend = nothing,
-    yaxis = :log10,
-)
-for s in ts_sets
-    times, values = drop_first(s.data.times, rel_dev(s.data.charges))
-    plot!(p6, times, values; label = s.name)
-end
-
-plt = plot(p1, p2, p3, p4, p5, p6; layout = (3, 2), link = :x)
+plt = plot(p1, p2, p3, p4; layout = (2, 2), link = :x)
 
 savefig(plt, "plots/paper_figures/conservation.pdf")

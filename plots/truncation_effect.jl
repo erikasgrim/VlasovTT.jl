@@ -6,7 +6,7 @@ include(joinpath("plot_defaults.jl"))
 PlotDefaults.apply!()
 
 ts_dir = "final_results/two_stream/sweep_cutoff/"
-landau_dir = "final_results/landau_damping/sweep_cutoff4/"
+landau_dir = "final_results/landau_damping/sweep_cutoff/"
 
 function read_sweep(dir)
     entries = sort(filter(isdir, readdir(dir; join = true)))

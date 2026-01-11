@@ -24,7 +24,7 @@ Base.@kwdef struct LandauDampingConfig
 
     # Grid parameters
     R::Int = 10
-    k_cut::Int = 2^7
+    k_cut::Int = 2^6
     beta::Float64 = 2.0
     xmin::Float64 = -2pi
     xmax::Float64 = 2pi
@@ -34,7 +34,7 @@ Base.@kwdef struct LandauDampingConfig
     # TT parameters
     TCI_tolerance::Float64 = 1e-8
     maxrank::Int = 200
-    maxrank_ef::Int = 16
+    maxrank_ef::Int = 32
     cutoff::Float64 = 1e-8
 end
 
@@ -290,6 +290,6 @@ end
 
 run_simulation_sweep(
     parameter = :cutoff,
-    values = [1e-9],
+    values = [1e-7, 1e-8, 1e-9, 1e-10],
     sweep_name = "cutoff",
 )

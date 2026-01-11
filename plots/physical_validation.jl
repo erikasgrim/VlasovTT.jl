@@ -222,5 +222,4 @@ l = @layout [grid(1, 2){0.7h}; grid(1, 6){0.3h}]
 plt = plot(p1, p2, p3, p4, p5, p6, p7, p8; layout = l)
 
 # Save figure
-mkpath("paper_figures")
 savefig(plt, "plots/paper_figures/physical_validation.pdf")

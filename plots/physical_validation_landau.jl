@@ -10,7 +10,7 @@ using VlasovTT: read_data, PhaseSpaceGrids
 include(joinpath("plot_defaults.jl"))
 PlotDefaults.apply!()
 
-landau_ref = "final_results/landau_damping/sweep_cutoff/case_001"
+landau_ref = "final_results/landau_damping/sweep_cutoff/case_004"
 landau_data = joinpath(landau_ref, "data.csv")
 landau_data = read_data(landau_data)
 
@@ -32,7 +32,7 @@ end
 
 # Linear fit
 landau_gamma = -0.15139
-landau_analytic = [1e-1 * exp(2 * landau_gamma * t) for t in landau_data.times]
+landau_analytic = [2e-1 * exp(2 * landau_gamma * t) for t in landau_data.times]
 
 p1 = plot(
     landau_data.times,
@@ -159,5 +159,4 @@ l = @layout [
 plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 750))
 
 # Save figure
-mkpath("paper_figures")
 savefig(plt, "plots/paper_figures/physical_validation_landau.pdf")

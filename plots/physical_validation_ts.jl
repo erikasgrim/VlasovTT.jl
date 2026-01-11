@@ -10,7 +10,7 @@ using VlasovTT: read_data, PhaseSpaceGrids
 include(joinpath("plot_defaults.jl"))
 PlotDefaults.apply!()
 
-two_stream_ref = "final_results/two_stream/sweep_cutoff/case_003"
+two_stream_ref = "final_results/two_stream/sweep_cutoff/case_004"
 two_stream_data = joinpath(two_stream_ref, "data.csv")
 two_stream_data = read_data(two_stream_data)
 
@@ -102,14 +102,14 @@ v_vals = range(phase.vmin, phase.vmax; length = 200)
 tt_snapshot = QuanticsTCI.TensorTrain(ITensors.cpu(psi_mps))
 f_vals = [tt_snapshot(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
 
-p4_mps_path = joinpath(two_stream_ref, "mps", "psi_step300.h5")
+p4_mps_path = joinpath(two_stream_ref, "mps", "psi_step150.h5")
 psi_mps_150 = h5open(p4_mps_path, "r") do file
     read(file, "psi", MPS)
 end
 tt_snapshot_150 = QuanticsTCI.TensorTrain(ITensors.cpu(psi_mps_150))
 f_vals_150 = [tt_snapshot_150(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
 
-p5_mps_path = joinpath(two_stream_ref, "mps", "psi_step400.h5")
+p5_mps_path = joinpath(two_stream_ref, "mps", "psi_step200.h5")
 psi_mps_300 = h5open(p5_mps_path, "r") do file
     read(file, "psi", MPS)
 end
@@ -169,5 +169,4 @@ l = @layout [
 plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 750))
 
 # Save figure
-mkpath("paper_figures")
 savefig(plt, "plots/paper_figures/physical_validation_ts.pdf")
