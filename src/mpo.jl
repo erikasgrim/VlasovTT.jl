@@ -3,8 +3,8 @@ struct SolverMPOs
     v_fourier_mpo::TCI.TensorTrain
     x_inv_fourier_mpo::TCI.TensorTrain
     v_inv_fourier_mpo::TCI.TensorTrain
-    x_inv_v_fourier_mpo::TCI.TensorTrain
-    v_inv_x_fourier_mpo::TCI.TensorTrain
+    x_inv_v_fourier_mpo::Union{TCI.TensorTrain,Nothing}
+    v_inv_x_fourier_mpo::Union{TCI.TensorTrain,Nothing}
     fourier_mpo::TCI.TensorTrain
     inv_fourier_mpo::TCI.TensorTrain
     half_free_streaming_fourier_mpo::TCI.TensorTrain
@@ -230,27 +230,13 @@ function build_solver_mpos(
         tolerance = tolerance,
     )
 
-    x_inv_v_fourier_mpo = TCI.contract(
-        fourier.v_fourier_mpo,
-        fourier.x_inv_fourier_mpo;
-        algorithm = :naive,
-        tolerance = tolerance,
-    )
-
-    v_inv_x_fourier_mpo = TCI.contract(
-        fourier.x_fourier_mpo,
-        fourier.v_inv_fourier_mpo;
-        algorithm = :naive,
-        tolerance = tolerance,
-    )
-
     return SolverMPOs(
         fourier.x_fourier_mpo,
         fourier.v_fourier_mpo,
         fourier.x_inv_fourier_mpo,
         fourier.v_inv_fourier_mpo,
-        x_inv_v_fourier_mpo,
-        v_inv_x_fourier_mpo,
+        nothing,
+        nothing,
         fourier.fourier_mpo,
         fourier.inv_fourier_mpo,
         half_free_streaming_fourier_mpo,
@@ -277,8 +263,22 @@ function prepare_itensor_mpos(
     v_fourier_mpo_it = MPO(mpos.v_fourier_mpo; sites = sites_mpo)
     v_inv_fourier_mpo_it = MPO(mpos.v_inv_fourier_mpo; sites = sites_mpo)
 
-    x_inv_v_fourier_mpo_it = MPO(mpos.x_inv_v_fourier_mpo; sites = sites_mpo)
-    v_inv_x_fourier_mpo_it = MPO(mpos.v_inv_x_fourier_mpo; sites = sites_mpo)
+    # Build composite x-v Fourier MPOs in ITensor space to control contraction costs.
+    x_inv_v_fourier_mpo_it = apply(
+        v_fourier_mpo_it,
+        x_inv_fourier_mpo_it;
+        alg = "naive",
+        cutoff = cutoff,
+    )
+    println("x_inv_v_fourier_mpo_it rank: ", maxlinkdim(x_inv_v_fourier_mpo_it))
+    
+    v_inv_x_fourier_mpo_it = apply(
+        x_fourier_mpo_it,
+        v_inv_fourier_mpo_it;
+        alg = "naive",
+        cutoff = cutoff,
+    )
+    println("v_inv_x_fourier_mpo_it rank: ", maxlinkdim(v_inv_x_fourier_mpo_it))
 
     full_free_stream_mpo_it = apply(
         x_inv_fourier_mpo_it,
