@@ -7,7 +7,7 @@ function gaussian_ic(
 )
     norm_const = 1 / (2π * sigma_x * sigma_v)
     return quantics -> begin
-        coords = quantics_to_origcoord(phase.x_v_grid, quantics)
+        coords = quantics_to_origcoord_xv(phase, quantics)
         x = coords[1]
         v = coords[2]
         return norm_const *
@@ -23,7 +23,7 @@ function equilibrium_test_ic(
 )
     norm_const = 1 / (sqrt(2π) * sigma_v)
     return quantics -> begin
-        coords = quantics_to_origcoord(phase.x_v_grid, quantics)
+        coords = quantics_to_origcoord_xv(phase, quantics)
         v = coords[2]
         return norm_const * exp(-((v - v0)^2) / (2 * sigma_v^2))
     end
@@ -39,7 +39,7 @@ function linear_landau_damping_ic(
     norm_const = 1 / (sqrt(2π) * vt)
     k0 = mode * 2π / phase.Lx
     return quantics -> begin
-        coords = quantics_to_origcoord(phase.x_v_grid, quantics)
+        coords = quantics_to_origcoord_xv(phase, quantics)
         x = coords[1]
         v = coords[2]
         return (1 + A * cos(k0 * x)) * norm_const * exp(-((v - v0)^2) / (2 * vt^2))
@@ -56,7 +56,7 @@ function two_stream_instability_ic(
     k = mode * 2π / phase.Lx
     norm_factor = 1 / (sqrt(2π) * vt)
     return quantics -> begin
-        coords = quantics_to_origcoord(phase.x_v_grid, quantics)
+        coords = quantics_to_origcoord_xv(phase, quantics)
         x = coords[1]
         v = coords[2]
 

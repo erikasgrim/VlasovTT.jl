@@ -23,7 +23,7 @@ Base.@kwdef struct TwoStreamConfig
     simulation_name::String = "two_stream"
 
     # Grid parameters
-    R::Int = 10
+    R::Int = 14
     k_cut::Int = 2^6 # Keep 2^6 lowest negative AND positive modes.
     beta::Float64 = 2.0
     xmin::Float64 = -pi / 3.06
@@ -34,7 +34,7 @@ Base.@kwdef struct TwoStreamConfig
     # TT parameters
     TCI_tolerance::Float64 = 1e-8
     maxrank::Int = 200
-    maxrank_ef::Int = 12
+    maxrank_ef::Int = 32
     cutoff::Float64 = 1e-8
 end
 
@@ -71,7 +71,7 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
     cutoff = config.cutoff
 
     # Build phase space grids and simulation parameters
-    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
+    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=false, v_lsb_first=true)
     params = VlasovTT.SimulationParams(
         dt = dt,
         tolerance = TCI_tolerance,
@@ -109,15 +109,14 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
         beta = params.beta,
         eps0 = 1.0,
         v0 = params.v0,
-        lsb_first = true,
     )
 
     # Build initial pivots around +- v0 in velocity space
     pivots = Vector{Vector{Int}}()
     for x_pos in [phase.xmin, 0.5 * (phase.xmin + phase.xmax), phase.xmax]
-        q_x = origcoord_to_quantics(phase.x_grid, x_pos)
+        q_x = VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.x_grid, x_pos), phase.x_lsb_first)
         for v_pos in [-0.2, 0.2]
-            q_v = origcoord_to_quantics(phase.v_grid, v_pos)
+            q_v = VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.v_grid, v_pos), phase.v_lsb_first)
             push!(pivots, VlasovTT.interleave_bits(q_x, q_v))
         end
     end
@@ -154,8 +153,7 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
     # Half step in free streaming
     psi_mps = apply(itensor_mpos.x_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
     psi_mps = apply(itensor_mpos.half_free_stream_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
-    psi_mps = apply(itensor_mpos.x_inv_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
-    psi_mps = apply(itensor_mpos.v_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
+    psi_mps = apply(itensor_mpos.x_inv_v_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
 
     previous_tci = nothing
     ef_mps = nothing
@@ -173,6 +171,8 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
                 itensor_mpos.x_inv_fourier,
                 itensor_mpos.v_fourier,
                 itensor_mpos.v_inv_fourier,
+                itensor_mpos.x_inv_v_fourier,
+                itensor_mpos.v_inv_x_fourier,
                 mps_sites,
                 previous_tci;
                 params = params,
@@ -212,7 +212,7 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
         write_data(
             step, 
             round(step * params.dt, digits=n_digits), 
-            round(real(total_charge(psi_plot, phase, observables_cache)), digits=n_digits),
+            round(charge, digits=n_digits),
             round(real(electric_field_energy(ef_mps, phase)), digits=n_digits),
             round(real(ef_energy_first_mode), digits=n_digits),
             round(real(kinetic_energy(psi_plot, phase, observables_cache)), digits=n_digits),
@@ -232,7 +232,10 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
 
         if step % save_every == 0 || step == 1 || step == nsteps
             tt_snapshot = TCI.TensorTrain(ITensors.cpu(psi_plot))
-            f_vals = [tt_snapshot(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
+            f_vals = [
+                tt_snapshot(VlasovTT.origcoord_to_quantics_xv(phase, x, v))
+                for v in v_vals, x in x_vals
+            ]
             Plots.savefig(
                 Plots.heatmap(
                     x_vals,
@@ -246,7 +249,10 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
             )
 
             ef_snapshot = TCI.TensorTrain(ITensors.cpu(ef_mps))
-            E_x_vals = [real.(ef_snapshot(origcoord_to_quantics(phase.x_grid, x))) for x in x_vals]
+            E_x_vals = [
+                real.(ef_snapshot(VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.x_grid, x), phase.x_lsb_first)))
+                for x in x_vals
+            ]
             Plots.savefig(
                 Plots.plot(
                     x_vals,
@@ -294,6 +300,6 @@ end
 
 run_simulation_sweep(
     parameter = :cutoff,
-    values = [1e-8],
+    values = [1e-7],
     sweep_name = "cutoff",
 )

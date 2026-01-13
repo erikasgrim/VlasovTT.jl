@@ -3,6 +3,8 @@ struct SolverMPOs
     v_fourier_mpo::TCI.TensorTrain
     x_inv_fourier_mpo::TCI.TensorTrain
     v_inv_fourier_mpo::TCI.TensorTrain
+    x_inv_v_fourier_mpo::TCI.TensorTrain
+    v_inv_x_fourier_mpo::TCI.TensorTrain
     fourier_mpo::TCI.TensorTrain
     inv_fourier_mpo::TCI.TensorTrain
     half_free_streaming_fourier_mpo::TCI.TensorTrain
@@ -11,15 +13,24 @@ struct SolverMPOs
     full_poisson_mpo::TCI.TensorTrain
 end
 
-function build_fourier_mpos(R::Int; tolerance::Real = 1e-8, lsb_first::Bool = false)
+function build_fourier_mpos(
+    R::Int;
+    tolerance::Real = 1e-8,
+    x_lsb_first::Bool = false,
+    v_lsb_first::Bool = false,
+    kx_lsb_first::Union{Bool,Nothing} = nothing,
+    kv_lsb_first::Union{Bool,Nothing} = nothing,
+)
+    kx_lsb_first = kx_lsb_first === nothing ? !x_lsb_first : kx_lsb_first
+    kv_lsb_first = kv_lsb_first === nothing ? !v_lsb_first : kv_lsb_first
     fourier_tol = 1e-12
-    x_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = -1.0, tolerance = fourier_tol)
-    v_fourier_mpo = stretched_fourier_mpo(R, 2, 2; sign = -1.0, tolerance = fourier_tol)
-    x_inv_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = 1.0, tolerance = fourier_tol, lsb_first = true)
-    v_inv_fourier_mpo = stretched_fourier_mpo(R, 2, 2; sign = 1.0, tolerance = fourier_tol, lsb_first = true)
+    x_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = -1.0, tolerance = fourier_tol, lsb_first = x_lsb_first)
+    v_fourier_mpo = stretched_fourier_mpo(R, 2, 2; sign = -1.0, tolerance = fourier_tol, lsb_first = v_lsb_first)
+    x_inv_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = 1.0, tolerance = fourier_tol, lsb_first = kx_lsb_first)
+    v_inv_fourier_mpo = stretched_fourier_mpo(R, 2, 2; sign = 1.0, tolerance = fourier_tol, lsb_first = kv_lsb_first)
 
-    fourier_mpo = quanticsfouriermpo(R; sign = -1.0, tolerance = fourier_tol)
-    inv_fourier_mpo = quanticsfouriermpo(R; sign = 1.0, tolerance = fourier_tol)
+    fourier_mpo = stretched_fourier_mpo(R, 1, 1; sign = -1.0, tolerance = fourier_tol, lsb_first = x_lsb_first)
+    inv_fourier_mpo = stretched_fourier_mpo(R, 1, 1; sign = 1.0, tolerance = fourier_tol, lsb_first = kx_lsb_first)
 
     return (
         x_fourier_mpo = x_fourier_mpo,
@@ -31,16 +42,27 @@ function build_fourier_mpos(R::Int; tolerance::Real = 1e-8, lsb_first::Bool = fa
     )
 end
 
-function build_kv_mpo(Lv, M, kv_grid; tolerance::Real = 1e-12, k_cut::Real = 2^8, beta::Real = 2.0)
+function build_kv_mpo(
+    Lv,
+    M,
+    kv_grid;
+    tolerance::Real = 1e-12,
+    k_cut::Real = 2^8,
+    beta::Real = 2.0,
+    kv_lsb_first::Bool = false,
+)
     function kv_kernel(q_bits)
-        kv_reversed = quantics_to_origcoord(kv_grid, reverse(q_bits))
+        kv_aligned = quantics_to_origcoord(kv_grid, maybe_reverse_bits(q_bits, kv_lsb_first))
 
-        nv = k_to_n(kv_reversed, M)
+        nv = k_to_n(kv_aligned, M)
 
         return 2pi * nv / Lv * frequency_filter(nv; k_cut = k_cut, beta = beta)
     end
 
-    initial_pivots = [origcoord_to_quantics(kv_grid, n_to_k(n, M)) for n in -10:10]
+    initial_pivots = [
+        maybe_reverse_bits(origcoord_to_quantics(kv_grid, n_to_k(n, M)), kv_lsb_first)
+        for n in -10:10
+    ]
     R = length(kv_grid)
     localdims = fill(2, R)
 
@@ -54,16 +76,29 @@ function build_kv_mpo(Lv, M, kv_grid; tolerance::Real = 1e-12, k_cut::Real = 2^8
     return tt_to_mpo(TCI.TensorTrain(tci))
 end
 
-function build_diffusion_mpo(dt, Lv, M, kv_grid; tolerance::Real = 1e-12, nu::Real = 3e-5, k_cut::Real = 2^8, beta::Real = 2.0)
+function build_diffusion_mpo(
+    dt,
+    Lv,
+    M,
+    kv_grid;
+    tolerance::Real = 1e-12,
+    nu::Real = 3e-5,
+    k_cut::Real = 2^8,
+    beta::Real = 2.0,
+    kv_lsb_first::Bool = false,
+)
     function kv_kernel(q_bits)
-        kv = quantics_to_origcoord(kv_grid, reverse(q_bits))
+        kv = quantics_to_origcoord(kv_grid, maybe_reverse_bits(q_bits, kv_lsb_first))
 
         nv = k_to_n(kv, M)
 
         return exp(- nu * (2pi * nv / Lv)^2 * dt)# * frequency_filter(nv; k_cut = k_cut, beta = beta)
     end
 
-    initial_pivots = [origcoord_to_quantics(kv_grid, n_to_k(n, M)) for n in -10:10]
+    initial_pivots = [
+        maybe_reverse_bits(origcoord_to_quantics(kv_grid, n_to_k(n, M)), kv_lsb_first)
+        for n in -10:10
+    ]
     R = length(kv_grid)
     localdims = fill(2, R)
 
@@ -78,12 +113,23 @@ function build_diffusion_mpo(dt, Lv, M, kv_grid; tolerance::Real = 1e-12, nu::Re
     return tt_to_mpo(TCI.TensorTrain(tci))
 end
 
-function build_filtering_mpo(dt, Lv, Lx, M, kv_grid, kx_grid; tolerance::Real = 1e-12, v0::Real = 1e-1)
+function build_filtering_mpo(
+    dt,
+    Lv,
+    Lx,
+    M,
+    kv_grid,
+    kx_grid;
+    tolerance::Real = 1e-12,
+    v0::Real = 1e-1,
+    kx_lsb_first::Bool = false,
+    kv_lsb_first::Bool = false,
+)
     function filter_kernel(q_bits)
         q_kx = q_bits[1:2:end]
         q_kv = q_bits[2:2:end]
-        kx = quantics_to_origcoord(kx_grid, reverse(q_kx))
-        kv = quantics_to_origcoord(kv_grid, reverse(q_kv))
+        kx = quantics_to_origcoord(kx_grid, maybe_reverse_bits(q_kx, kx_lsb_first))
+        kv = quantics_to_origcoord(kv_grid, maybe_reverse_bits(q_kv, kv_lsb_first))
 
         n_x = k_to_n(kx, M)
         n_v = k_to_n(kv, M)
@@ -91,8 +137,14 @@ function build_filtering_mpo(dt, Lv, Lx, M, kv_grid, kx_grid; tolerance::Real = 
         return exp(v0^2 * (2pi / Lv) * n_v * (2pi / Lx) * n_x * dt)
     end
 
-    initial_pivots_x = [origcoord_to_quantics(kx_grid, n_to_k(n, M)) for n in -5:5]
-    initial_pivots_v = [origcoord_to_quantics(kv_grid, n_to_k(n, M)) for n in -5:5]
+    initial_pivots_x = [
+        maybe_reverse_bits(origcoord_to_quantics(kx_grid, n_to_k(n, M)), kx_lsb_first)
+        for n in -5:5
+    ]
+    initial_pivots_v = [
+        maybe_reverse_bits(origcoord_to_quantics(kv_grid, n_to_k(n, M)), kv_lsb_first)
+        for n in -5:5
+    ]
     initial_pivots = interleave_bits(initial_pivots_x, initial_pivots_v)
     R = length(kx_grid)
     localdims = fill(2, 2R)
@@ -116,9 +168,20 @@ function build_solver_mpos(
     beta::Real = 2.0,
     eps0::Real = 1.0,
     v0::Real = 1e-1,
-    lsb_first::Bool = true,
+    x_lsb_first::Bool = phase.x_lsb_first,
+    v_lsb_first::Bool = phase.v_lsb_first,
 )
-    fourier = build_fourier_mpos(phase.R; tolerance = tolerance, lsb_first = lsb_first)
+    kx_lsb_first = !x_lsb_first
+    kv_lsb_first = !v_lsb_first
+
+    fourier = build_fourier_mpos(
+        phase.R;
+        tolerance = tolerance,
+        x_lsb_first = x_lsb_first,
+        v_lsb_first = v_lsb_first,
+        kx_lsb_first = kx_lsb_first,
+        kv_lsb_first = kv_lsb_first,
+    )
 
     full_free_streaming_fourier_mpo = get_free_streaming_mpo(
         dt,
@@ -129,7 +192,8 @@ function build_solver_mpos(
         tolerance = tolerance,
         k_cut = k_cut,
         beta = beta,
-        lsb_first = lsb_first,
+        kx_lsb_first = kx_lsb_first,
+        v_lsb_first = v_lsb_first,
     )
 
     half_free_streaming_fourier_mpo = get_free_streaming_mpo(
@@ -141,7 +205,8 @@ function build_solver_mpos(
         tolerance = tolerance,
         k_cut = k_cut,
         beta = beta,
-        lsb_first = lsb_first,
+        kx_lsb_first = kx_lsb_first,
+        v_lsb_first = v_lsb_first,
     )
 
     poisson_mpo = get_poisson_mpo(
@@ -152,14 +217,29 @@ function build_solver_mpos(
         eps0 = eps0,
     )
 
+    poisson_mpo_aligned = kx_lsb_first ? TCI.reverse(poisson_mpo) : poisson_mpo
     full_poisson_mpo = TCI.contract(
-        reverse(fourier.inv_fourier_mpo),
+        fourier.inv_fourier_mpo,
         TCI.contract(
-            reverse(poisson_mpo),
+            poisson_mpo_aligned,
             fourier.fourier_mpo;
             algorithm = :naive,
             tolerance = tolerance,
         );
+        algorithm = :naive,
+        tolerance = tolerance,
+    )
+
+    x_inv_v_fourier_mpo = TCI.contract(
+        fourier.v_fourier_mpo,
+        fourier.x_inv_fourier_mpo;
+        algorithm = :naive,
+        tolerance = tolerance,
+    )
+
+    v_inv_x_fourier_mpo = TCI.contract(
+        fourier.x_fourier_mpo,
+        fourier.v_inv_fourier_mpo;
         algorithm = :naive,
         tolerance = tolerance,
     )
@@ -169,6 +249,8 @@ function build_solver_mpos(
         fourier.v_fourier_mpo,
         fourier.x_inv_fourier_mpo,
         fourier.v_inv_fourier_mpo,
+        x_inv_v_fourier_mpo,
+        v_inv_x_fourier_mpo,
         fourier.fourier_mpo,
         fourier.inv_fourier_mpo,
         half_free_streaming_fourier_mpo,
@@ -194,6 +276,9 @@ function prepare_itensor_mpos(
 
     v_fourier_mpo_it = MPO(mpos.v_fourier_mpo; sites = sites_mpo)
     v_inv_fourier_mpo_it = MPO(mpos.v_inv_fourier_mpo; sites = sites_mpo)
+
+    x_inv_v_fourier_mpo_it = MPO(mpos.x_inv_v_fourier_mpo; sites = sites_mpo)
+    v_inv_x_fourier_mpo_it = MPO(mpos.v_inv_x_fourier_mpo; sites = sites_mpo)
 
     full_free_stream_mpo_it = apply(
         x_inv_fourier_mpo_it,
@@ -231,6 +316,9 @@ function prepare_itensor_mpos(
 
         v_fourier_mpo_it = cu(v_fourier_mpo_it)
         v_inv_fourier_mpo_it = cu(v_inv_fourier_mpo_it)
+
+        x_inv_v_fourier_mpo_it = cu(x_inv_v_fourier_mpo_it)
+        v_inv_x_fourier_mpo_it = cu(v_inv_x_fourier_mpo_it)
     end
 
     return (
@@ -242,5 +330,7 @@ function prepare_itensor_mpos(
         x_inv_fourier = x_inv_fourier_mpo_it,
         v_fourier = v_fourier_mpo_it,
         v_inv_fourier = v_inv_fourier_mpo_it,
+        x_inv_v_fourier = x_inv_v_fourier_mpo_it,
+        v_inv_x_fourier = v_inv_x_fourier_mpo_it,
     )
 end

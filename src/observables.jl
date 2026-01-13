@@ -8,7 +8,7 @@ function build_observables_cache(psi_mps::MPS, phase::PhaseSpaceGrids; tolerance
     sites = siteinds(psi_mps)
 
     v2_fn = quantics -> begin
-        coords = quantics_to_origcoord(phase.x_v_grid, quantics)
+        coords = quantics_to_origcoord_xv(phase, quantics)
         v = coords[2]
         return v^2
     end
@@ -23,7 +23,7 @@ function build_observables_cache(psi_mps::MPS, phase::PhaseSpaceGrids; tolerance
     v2_mps = MPS(v2_tt; sites = sites)
 
     v_fn = quantics -> begin
-        coords = quantics_to_origcoord(phase.x_v_grid, quantics)
+        coords = quantics_to_origcoord_xv(phase, quantics)
         v = coords[2]
         return v
     end
@@ -51,8 +51,8 @@ function electric_field_mode_energy(
     electric_field_hat_tt = TCI.TensorTrain(ITensors.cpu(electric_field_hat))
     k_pos = n_to_k(mode, phase.M)
     k_neg = n_to_k(-mode, phase.M)
-    qk_pos = reverse(origcoord_to_quantics(phase.kx_grid, k_pos))
-    qk_neg = reverse(origcoord_to_quantics(phase.kx_grid, k_neg))
+    qk_pos = maybe_reverse_bits(origcoord_to_quantics(phase.kx_grid, k_pos), phase.kx_lsb_first)
+    qk_neg = maybe_reverse_bits(origcoord_to_quantics(phase.kx_grid, k_neg), phase.kx_lsb_first)
     energy = abs2(electric_field_hat_tt(qk_pos)) + abs2(electric_field_hat_tt(qk_neg))
 
     return 0.5 * phase.dx * energy

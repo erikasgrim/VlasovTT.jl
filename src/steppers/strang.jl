@@ -41,20 +41,16 @@ function strang_step_filtered_TCI!(
     psi_tt = TCI.TensorTrain(ITensors.cpu(psi_mps))
 
     R = phase.R
-    q_x_buf = Vector{Int}(undef, R)
-    q_kv_buf = Vector{Int}(undef, R)
 
     function kernel(q_bits::AbstractVector{Int})
-        @inbounds for r in 1:R
-            q_x_buf[r] = q_bits[2r - 1]
-            q_kv_buf[r] = q_bits[2 * (R - r + 1)]
-        end
+        q_x, q_kv = split_interleaved_bits(q_bits, R)
+        q_kv_aligned = maybe_reverse_bits(q_kv, phase.kv_lsb_first)
 
-        kv_orig = quantics_to_origcoord(phase.kv_grid, q_kv_buf)
+        kv_orig = quantics_to_origcoord(phase.kv_grid, q_kv_aligned)
         n_v = k_to_n(kv_orig, phase.M)
         kv_phys = 2π * n_v / phase.Lv
 
-        E_val = electric_field_tt(q_x_buf)
+        E_val = electric_field_tt(q_x)
 
         phase_angle = E_val * kv_phys * params.dt
         return exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(kv_phys; beta=params.beta, k_cut=params.k_cut)
@@ -79,7 +75,13 @@ function strang_step_filtered_TCI!(
     # )[1]
 
     if previous_tci === nothing
-        pivots = acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true)
+        pivots = acceleration_pivots(
+            phase.x_grid,
+            phase.kv_grid,
+            phase.M;
+            x_lsb_first = phase.x_lsb_first,
+            kv_lsb_first = phase.kv_lsb_first,
+        )
 
         psi_tt = TCI.crossinterpolate2(
             ComplexF64,
@@ -138,6 +140,8 @@ function strang_step_unfiltered_TCI!(
     x_inv_fourier_mpo_it::MPO,
     v_fourier_mpo_it::MPO,
     v_inv_fourier_mpo_it::MPO,
+    x_inv_v_fourier_mpo_it::MPO,
+    v_inv_x_fourier_mpo_it::MPO,
     mps_sites,
     previous_tci;
     params::SimulationParams,
@@ -158,19 +162,15 @@ function strang_step_unfiltered_TCI!(
     psi_tt = TCI.TensorTrain(ITensors.cpu(psi_mps))
 
     R = phase.R
-    q_x_buf = Vector{Int}(undef, R)
-    q_kv_buf = Vector{Int}(undef, R)
     function kernel(q_bits::AbstractVector{Int})
-        @inbounds for r in 1:R
-            q_x_buf[r] = q_bits[2r - 1]
-            q_kv_buf[r] = q_bits[2 * (R - r + 1)]
-        end
+        q_x, q_kv = split_interleaved_bits(q_bits, R)
+        q_kv_aligned = maybe_reverse_bits(q_kv, phase.kv_lsb_first)
 
-        kv_orig = quantics_to_origcoord(phase.kv_grid, q_kv_buf)
+        kv_orig = quantics_to_origcoord(phase.kv_grid, q_kv_aligned)
         n_v = k_to_n(kv_orig, phase.M)
         kv_phys = 2π * n_v / phase.Lv
 
-        E_val = electric_field_tt(q_x_buf)
+        E_val = electric_field_tt(q_x)
 
         phase_angle = E_val * kv_phys * params.dt
         return exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(n_v; beta=params.beta, k_cut=params.k_cut)
@@ -196,7 +196,13 @@ function strang_step_unfiltered_TCI!(
 
     tci_start = time()
     if previous_tci === nothing
-        pivots = acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true)
+        pivots = acceleration_pivots(
+            phase.x_grid,
+            phase.kv_grid,
+            phase.M;
+            x_lsb_first = phase.x_lsb_first,
+            kv_lsb_first = phase.kv_lsb_first,
+        )
 
         psi_tt = TCI.crossinterpolate2(
             ComplexF64,
@@ -224,20 +230,14 @@ function strang_step_unfiltered_TCI!(
     end
     
     mpo_start = time()
-    # Inverse Fourier transform in v
-    psi_mps = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
-
-    # Fourier transform in x
-    psi_mps = apply(x_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    # Inverse Fourier transform in v, Fourier transform in x
+    psi_mps = apply(v_inv_x_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
 
     # Free streaming step
     psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
     
-    # Inverse Fourier transform in x
-    psi_mps = apply(x_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
-
-    # Fourier transform in v
-    psi_mps = apply(v_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    # Inverse Fourier transform in x, Fourier transform in v
+    psi_mps = apply(x_inv_v_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
     mpo_time = time() - mpo_start
     step_time = time() - steptime_start
 
@@ -327,6 +327,8 @@ function strang_step_unfiltered_RK4!(
     x_inv_fourier_mpo_it::MPO,
     v_fourier_mpo_it::MPO,
     v_inv_fourier_mpo_it::MPO,
+    x_inv_v_fourier_mpo_it::MPO,
+    v_inv_x_fourier_mpo_it::MPO,
     stretched_kv_mpo_it::MPO,
     mpo_sites;
     params::SimulationParams,
@@ -367,20 +369,14 @@ function strang_step_unfiltered_RK4!(
 
     psi_mps = add(psi_mps, (dt / 6) * (k1 + 2k2 + 2k3 + k4); maxdim = params.maxrank, cutoff = params.cutoff)
 
-    # Inverse Fourier transform in v
-    psi_mps = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
-
-    # Fourier transform in x
-    psi_mps = apply(x_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    # Inverse Fourier transform in v, Fourier transform in x
+    psi_mps = apply(v_inv_x_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
 
     # Free streaming step
     psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
 
-    # Inverse Fourier transform in x
-    psi_mps = apply(x_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
-
-    # Fourier transform in v
-    psi_mps = apply(v_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    # Inverse Fourier transform in x, Fourier transform in v
+    psi_mps = apply(x_inv_v_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
 
     return return_field ? (psi_mps, electric_field_mps) : psi_mps
 end

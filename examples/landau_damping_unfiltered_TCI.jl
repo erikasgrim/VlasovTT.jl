@@ -23,7 +23,7 @@ Base.@kwdef struct LandauDampingConfig
     simulation_name::String = "landau_damping"
 
     # Grid parameters
-    R::Int = 10
+    R::Int = 15
     k_cut::Int = 2^6
     beta::Float64 = 2.0
     xmin::Float64 = -2pi
@@ -72,7 +72,7 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
     cutoff = config.cutoff
 
     # Build phase space grids and simulation parameters
-    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
+    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=false, v_lsb_first=true)
     params = VlasovTT.SimulationParams(
         dt = dt,
         tolerance = TCI_tolerance,
@@ -110,12 +110,19 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
         beta = params.beta,
         eps0 = 1.0,
         v0 = params.v0,
-        lsb_first = true,
     )
 
     # Build initial pivots around +- v0 in velocity space
+    pivots = Vector{Vector{Int}}()
+    for x_pos in [phase.xmin, 0.5 * (phase.xmin + phase.xmax), phase.xmax]
+        q_x = VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.x_grid, x_pos), phase.x_lsb_first)
+        for v_pos in [-1.0, 0.0, 1.0]
+            q_v = VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.v_grid, v_pos), phase.v_lsb_first)
+            push!(pivots, VlasovTT.interleave_bits(q_x, q_v))
+        end
+    end
     ic_fn = linear_landau_damping_ic(phase; A = 0.1, v0 = 0.0, vt = 1.0, mode = 1)
-    tt, _, _ = build_initial_tt(ic_fn, R; tolerance = params.tolerance)
+    tt, _, _ = build_initial_tt(ic_fn, R; tolerance = params.tolerance, initialpivots = pivots)
     println("Initial condition TT ranks: ", TCI.rank(tt))
 
     # Convert to ITensor MPS & MPOs
@@ -147,8 +154,7 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
     # Half step in free streaming
     psi_mps = apply(itensor_mpos.x_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
     psi_mps = apply(itensor_mpos.half_free_stream_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
-    psi_mps = apply(itensor_mpos.x_inv_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
-    psi_mps = apply(itensor_mpos.v_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
+    psi_mps = apply(itensor_mpos.x_inv_v_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
 
     previous_tci = nothing
     ef_mps = nothing
@@ -166,6 +172,8 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
                 itensor_mpos.x_inv_fourier,
                 itensor_mpos.v_fourier,
                 itensor_mpos.v_inv_fourier,
+                itensor_mpos.x_inv_v_fourier,
+                itensor_mpos.v_inv_x_fourier,
                 mps_sites,
                 previous_tci;
                 params = params,
@@ -227,7 +235,10 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
 
         if step % save_every == 0 || step == 1 || step == nsteps
             tt_snapshot = TCI.TensorTrain(ITensors.cpu(psi_plot))
-            f_vals = [tt_snapshot(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
+            f_vals = [
+                tt_snapshot(VlasovTT.origcoord_to_quantics_xv(phase, x, v))
+                for v in v_vals, x in x_vals
+            ]
             Plots.savefig(
                 Plots.heatmap(
                     x_vals,
@@ -241,7 +252,10 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
             )
 
             ef_snapshot = TCI.TensorTrain(ITensors.cpu(ef_mps))
-            E_x_vals = [real.(ef_snapshot(origcoord_to_quantics(phase.x_grid, x))) for x in x_vals]
+            E_x_vals = [
+                real.(ef_snapshot(VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.x_grid, x), phase.x_lsb_first)))
+                for x in x_vals
+            ]
             Plots.savefig(
                 Plots.plot(
                     x_vals,
@@ -291,5 +305,5 @@ end
 run_simulation_sweep(
     parameter = :cutoff,
     values = [1e-7, 1e-8, 1e-9, 1e-10],
-    sweep_name = "cutoff",
+    sweep_name = "cutoff2",
 )

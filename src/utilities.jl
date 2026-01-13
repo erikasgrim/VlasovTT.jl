@@ -14,6 +14,14 @@ function interleave_bits(q_first::AbstractVector{<:AbstractVector{Int}}, q_secon
     return [interleave_bits(q_first[i], q_second[i]) for i in eachindex(q_first)]
 end
 
+function maybe_reverse_bits(bits::AbstractVector{Int}, lsb_first::Bool)
+    return lsb_first ? reverse(bits) : bits
+end
+
+function split_interleaved_bits(q_bits::AbstractVector{Int}, R::Int)
+    return q_bits[1:2:2R], q_bits[2:2:2R]
+end
+
 function frequency_filter(n; beta::Real = 2.0, k_cut::Real = 2^8)
     return 1 / (exp((abs(n) - k_cut) * beta) + 1)
 end
