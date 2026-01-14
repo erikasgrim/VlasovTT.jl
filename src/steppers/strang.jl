@@ -145,6 +145,8 @@ function strang_step_unfiltered_TCI!(
     mps_sites,
     previous_tci;
     params::SimulationParams,
+    tci_profile::Bool = true,
+    tci_profile_label::String = "",
 )   
     steptime_start = time()
 
@@ -162,7 +164,11 @@ function strang_step_unfiltered_TCI!(
     psi_tt = TCI.TensorTrain(ITensors.cpu(psi_mps))
 
     R = phase.R
+    eval_count = Ref(0)
+    eval_time = Ref(0.0)
+
     function kernel(q_bits::AbstractVector{Int})
+        t0 = time()
         q_x, q_kv = split_interleaved_bits(q_bits, R)
         q_kv_aligned = maybe_reverse_bits(q_kv, phase.kv_lsb_first)
 
@@ -173,7 +179,10 @@ function strang_step_unfiltered_TCI!(
         E_val = electric_field_tt(q_x)
 
         phase_angle = E_val * kv_phys * params.dt
-        return exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(n_v; beta=params.beta, k_cut=params.k_cut)
+        result = exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(n_v; beta=params.beta, k_cut=params.k_cut)
+        eval_time[] += time() - t0
+        eval_count[] += 1
+        return result
     end
     kernel = TCI.CachedFunction{ComplexF64}(kernel, fill(2, 2*phase.R))
 
@@ -223,6 +232,12 @@ function strang_step_unfiltered_TCI!(
         psi_tt = previous_tci
     end
     tci_time = time() - tci_start
+    if tci_profile
+        avg_eval_ms = eval_count[] == 0 ? 0.0 : 1e3 * eval_time[] / eval_count[]
+        label = isempty(tci_profile_label) ? "" : " " * tci_profile_label
+        println("TCI fit stats$(label): evals=$(eval_count[]), avg_eval_ms=$(round(avg_eval_ms, digits=3))")
+        println("--")
+    end
 
     psi_mps = MPS(psi_tt; sites = mps_sites)
     if params.use_gpu
@@ -257,6 +272,7 @@ function strang_step_filtered_RK4!(
     half_filtering_mpo_it::MPO,
     mpo_sites;
     params::SimulationParams,
+    return_field::Bool = false,
 )
 
     # Get electric field MPO
@@ -332,6 +348,7 @@ function strang_step_unfiltered_RK4!(
     stretched_kv_mpo_it::MPO,
     mpo_sites;
     params::SimulationParams,
+    return_field::Bool = false,
 )
 
     # Get electric field MPO
