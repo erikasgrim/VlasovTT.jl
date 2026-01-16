@@ -41,6 +41,7 @@ function strang_step_filtered_TCI!(
     psi_tt = TCI.TensorTrain(ITensors.cpu(psi_mps))
 
     R = phase.R
+    localdims = fill(2, 2 * phase.R)
 
     function kernel(q_bits::AbstractVector{Int})
         q_x, q_kv = split_interleaved_bits(q_bits, R)
@@ -55,7 +56,8 @@ function strang_step_filtered_TCI!(
         phase_angle = E_val * kv_phys * params.dt
         return exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(kv_phys; beta=params.beta, k_cut=params.k_cut)
     end
-    kernel = TCI.CachedFunction{ComplexF64}(kernel, fill(2, 2*phase.R))
+    kernel = TCI.ThreadedBatchEvaluator{ComplexF64}(kernel, localdims)
+    kernel = TCI.CachedFunction{ComplexF64}(kernel, localdims)
 
     # if previous_tci === nothing
     #     pivots = acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true)
@@ -86,7 +88,7 @@ function strang_step_filtered_TCI!(
         psi_tt = TCI.crossinterpolate2(
             ComplexF64,
             kernel,
-            fill(2, 2*phase.R),
+            localdims,
             pivots;
             tolerance = params.tolerance,
             maxbonddim = params.maxrank,
@@ -164,11 +166,9 @@ function strang_step_unfiltered_TCI!(
     psi_tt = TCI.TensorTrain(ITensors.cpu(psi_mps))
 
     R = phase.R
-    eval_count = Ref(0)
-    eval_time = Ref(0.0)
+    localdims = fill(2, 2 * phase.R)
 
     function kernel(q_bits::AbstractVector{Int})
-        t0 = time()
         q_x, q_kv = split_interleaved_bits(q_bits, R)
         q_kv_aligned = maybe_reverse_bits(q_kv, phase.kv_lsb_first)
 
@@ -179,12 +179,10 @@ function strang_step_unfiltered_TCI!(
         E_val = electric_field_tt(q_x)
 
         phase_angle = E_val * kv_phys * params.dt
-        result = exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(n_v; beta=params.beta, k_cut=params.k_cut)
-        eval_time[] += time() - t0
-        eval_count[] += 1
-        return result
+        return exp(im * phase_angle * frequency_filter(n_v; beta=params.beta, k_cut=params.k_cut)) * psi_tt(q_bits) 
     end
-    kernel = TCI.CachedFunction{ComplexF64}(kernel, fill(2, 2*phase.R))
+    #kernel = TCI.ThreadedBatchEvaluator{ComplexF64}(kernel, localdims)
+    kernel = TCI.CachedFunction{ComplexF64}(kernel, localdims)
 
     # if previous_tci === nothing
     #     pivots = acceleration_pivots(phase.x_grid, phase.kv_grid, phase.M; lsb_first=true)
@@ -212,12 +210,13 @@ function strang_step_unfiltered_TCI!(
             x_lsb_first = phase.x_lsb_first,
             kv_lsb_first = phase.kv_lsb_first,
         )
+        pivots = TCI.optfirstpivot(kernel, localdims)
 
         psi_tt = TCI.crossinterpolate2(
             ComplexF64,
             kernel,
-            fill(2, 2*phase.R),
-            pivots;
+            localdims,
+            [pivots];
             tolerance = params.tolerance,
             maxbonddim = params.maxrank,
         )[1]
@@ -233,9 +232,8 @@ function strang_step_unfiltered_TCI!(
     end
     tci_time = time() - tci_start
     if tci_profile
-        avg_eval_ms = eval_count[] == 0 ? 0.0 : 1e3 * eval_time[] / eval_count[]
         label = isempty(tci_profile_label) ? "" : " " * tci_profile_label
-        println("TCI fit stats$(label): evals=$(eval_count[]), avg_eval_ms=$(round(avg_eval_ms, digits=3))")
+        println("TCI fit stats$(label): tci_time=$(round(tci_time, digits=3)) s")
         println("--")
     end
 
