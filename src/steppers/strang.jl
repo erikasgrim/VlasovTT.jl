@@ -35,6 +35,7 @@ function strang_step_filtered_TCI!(
         cutoff = params.cutoff,
         maxrank_ef = params.maxrank_ef,
         alg = params.alg,
+        unfoldingscheme = phase.unfoldingscheme,
     )
 
     electric_field_tt = TCI.TensorTrain(ITensors.cpu(electric_field_mps))
@@ -44,7 +45,7 @@ function strang_step_filtered_TCI!(
     localdims = fill(2, 2 * phase.R)
 
     function kernel(q_bits::AbstractVector{Int})
-        q_x, q_kv = split_interleaved_bits(q_bits, R)
+        q_x, q_kv = split_xv_bits(phase, q_bits)
         q_kv_aligned = maybe_reverse_bits(q_kv, phase.kv_lsb_first)
 
         kv_orig = quantics_to_origcoord(phase.kv_grid, q_kv_aligned)
@@ -54,7 +55,7 @@ function strang_step_filtered_TCI!(
         E_val = electric_field_tt(q_x)
 
         phase_angle = E_val * kv_phys * params.dt
-        return exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(kv_phys; beta=params.beta, k_cut=params.k_cut)
+        return exp(im * phase_angle) * psi_tt(q_bits) #* frequency_filter(kv_phys; beta=params.beta, k_cut=params.k_cut)
     end
     kernel = TCI.ThreadedBatchEvaluator{ComplexF64}(kernel, localdims)
     kernel = TCI.CachedFunction{ComplexF64}(kernel, localdims)
@@ -83,6 +84,7 @@ function strang_step_filtered_TCI!(
             phase.M;
             x_lsb_first = phase.x_lsb_first,
             kv_lsb_first = phase.kv_lsb_first,
+            unfoldingscheme = phase.unfoldingscheme,
         )
 
         psi_tt = TCI.crossinterpolate2(
@@ -160,6 +162,7 @@ function strang_step_unfiltered_TCI!(
         cutoff = params.cutoff,
         maxrank_ef = params.maxrank_ef,
         alg = params.alg,
+        unfoldingscheme = phase.unfoldingscheme,
     )
 
     electric_field_tt = TCI.TensorTrain(ITensors.cpu(electric_field_mps))
@@ -169,7 +172,7 @@ function strang_step_unfiltered_TCI!(
     localdims = fill(2, 2 * phase.R)
 
     function kernel(q_bits::AbstractVector{Int})
-        q_x, q_kv = split_interleaved_bits(q_bits, R)
+        q_x, q_kv = split_xv_bits(phase, q_bits)
         q_kv_aligned = maybe_reverse_bits(q_kv, phase.kv_lsb_first)
 
         kv_orig = quantics_to_origcoord(phase.kv_grid, q_kv_aligned)
@@ -209,6 +212,7 @@ function strang_step_unfiltered_TCI!(
             phase.M;
             x_lsb_first = phase.x_lsb_first,
             kv_lsb_first = phase.kv_lsb_first,
+            unfoldingscheme = phase.unfoldingscheme,
         )
         pivots = TCI.optfirstpivot(kernel, localdims)
 
@@ -281,6 +285,7 @@ function strang_step_filtered_RK4!(
         cutoff = params.cutoff,
         maxrank_ef = params.maxrank_ef,
         alg = params.alg,
+        unfoldingscheme = phase.unfoldingscheme,
     )
 
     electric_field_tt = TCI.TensorTrain(ITensors.cpu(electric_field_mps))
@@ -357,6 +362,7 @@ function strang_step_unfiltered_RK4!(
         cutoff = params.cutoff,
         maxrank_ef = params.maxrank_ef,
         alg = params.alg,
+        unfoldingscheme = phase.unfoldingscheme,
     )
 
     electric_field_tt = TCI.TensorTrain(ITensors.cpu(electric_field_mps))

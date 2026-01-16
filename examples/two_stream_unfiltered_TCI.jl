@@ -23,7 +23,7 @@ Base.@kwdef struct TwoStreamConfig
     simulation_name::String = "two_stream"
 
     # Grid parameters
-    R::Int = 14
+    R::Int = 10
     k_cut::Int = 2^6 # Keep 2^6 lowest negative AND positive modes.
     beta::Float64 = 2.0
     xmin::Float64 = -pi / 3.06
@@ -71,7 +71,7 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
     cutoff = config.cutoff
 
     # Build phase space grids and simulation parameters
-    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=false, v_lsb_first=true)
+    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=false, v_lsb_first=false, unfoldingscheme=:separate)
     params = VlasovTT.SimulationParams(
         dt = dt,
         tolerance = TCI_tolerance,
@@ -117,7 +117,7 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
         q_x = VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.x_grid, x_pos), phase.x_lsb_first)
         for v_pos in [-0.2, 0.2]
             q_v = VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.v_grid, v_pos), phase.v_lsb_first)
-            push!(pivots, VlasovTT.interleave_bits(q_x, q_v))
+            push!(pivots, VlasovTT.combine_xv_bits(phase, q_x, q_v))
         end
     end
     ic_fn = two_stream_instability_ic(phase; A = 1e-2, v0 = .2, vt = 0.01, mode = 1)
@@ -300,6 +300,6 @@ end
 
 run_simulation_sweep(
     parameter = :cutoff,
-    values = [1e-7],
+    values = [1e-7, 1e-8, 1e-9],
     sweep_name = "cutoff",
 )

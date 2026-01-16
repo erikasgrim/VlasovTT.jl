@@ -9,6 +9,7 @@ function acceleration_pivots(
     Mv;
     x_lsb_first::Bool = false,
     kv_lsb_first::Bool = false,
+    unfoldingscheme::Symbol = :interleaved,
 )
     R = length(x_grid)
 
@@ -27,7 +28,7 @@ function acceleration_pivots(
         for k in ks
             q_kv = origcoord_to_quantics(kv_grid, k)
             q_kv = maybe_reverse_bits(q_kv, kv_lsb_first)
-            push!(pivots, interleave_bits(q_x, q_kv))
+            push!(pivots, combine_bits(q_x, q_kv, unfoldingscheme))
         end
     end
 
@@ -46,6 +47,7 @@ function get_acceleration_mpo(
     beta::Real = 2.0,
     x_lsb_first::Bool = false,
     kv_lsb_first::Bool = false,
+    unfoldingscheme::Symbol = :interleaved,
     accel_cache::Union{Nothing,AccelerationTCICache}=nothing,
     reuse_strategy::Symbol=:resweep,
 )
@@ -59,11 +61,11 @@ function get_acceleration_mpo(
         Mv;
         x_lsb_first = x_lsb_first,
         kv_lsb_first = kv_lsb_first,
+        unfoldingscheme = unfoldingscheme,
     )
 
     function kernel(q_bits::AbstractVector{Int})
-        q_x = q_bits[1:2:2R]
-        q_kv = q_bits[2:2:2R]
+        q_x, q_kv = split_bits(q_bits, R, unfoldingscheme)
 
         q_kv_aligned = maybe_reverse_bits(q_kv, kv_lsb_first)
 

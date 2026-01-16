@@ -73,7 +73,11 @@ end
 
 function total_charge_kv(psi_mps::MPS, phase::PhaseSpaceGrids)
     # Project v sites to k_v = 0, then integrate over x.
-    cd_mps = get_charge_density_kv(psi_mps; dv=sqrt(phase.M) * phase.dv)  # x-only MPS
+    cd_mps = get_charge_density_kv(
+        psi_mps;
+        dv=sqrt(phase.M) * phase.dv,
+        unfoldingscheme=phase.unfoldingscheme,
+    )  # x-only MPS
     ones_x = ones_mps(siteinds(cd_mps))
     charge = inner(ones_x, ITensors.cpu(cd_mps))
     return charge * phase.dx

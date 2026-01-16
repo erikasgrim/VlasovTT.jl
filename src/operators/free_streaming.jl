@@ -4,6 +4,7 @@ function free_streaming_pivots(
     Mx;
     kx_lsb_first::Bool = false,
     v_lsb_first::Bool = false,
+    unfoldingscheme::Symbol = :interleaved,
 )
     R = length(kx_grid)
 
@@ -22,7 +23,7 @@ function free_streaming_pivots(
         for v in vs
             q_v = origcoord_to_quantics(v_grid, v)
             q_v = maybe_reverse_bits(q_v, v_lsb_first)
-            push!(pivots, interleave_bits(q_kx, q_v))
+            push!(pivots, combine_bits(q_kx, q_v, unfoldingscheme))
         end
     end
 
@@ -40,6 +41,7 @@ function get_free_streaming_mpo(
     beta::Real = 2.0,
     kx_lsb_first::Bool = false,
     v_lsb_first::Bool = false,
+    unfoldingscheme::Symbol = :interleaved,
 )
     R = length(kx_grid)
     localdims = fill(2, 2R)
@@ -50,11 +52,11 @@ function get_free_streaming_mpo(
         Mx;
         kx_lsb_first = kx_lsb_first,
         v_lsb_first = v_lsb_first,
+        unfoldingscheme = unfoldingscheme,
     )
 
     function kernel(q_bits::AbstractVector{Int})
-        q_kx = q_bits[1:2:2R]
-        q_v = q_bits[2:2:2R]
+        q_kx, q_v = split_bits(q_bits, R, unfoldingscheme)
         q_kx_aligned = maybe_reverse_bits(q_kx, kx_lsb_first)
         q_v_aligned = maybe_reverse_bits(q_v, v_lsb_first)
 

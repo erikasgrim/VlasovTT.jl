@@ -14,6 +14,7 @@ struct PhaseSpaceGrids
     x_v_grid
     kx_grid
     kv_grid
+    unfoldingscheme::Symbol
     x_lsb_first::Bool
     v_lsb_first::Bool
     kx_lsb_first::Bool
@@ -30,6 +31,9 @@ function PhaseSpaceGrids(
     x_lsb_first::Bool=true,
     v_lsb_first::Bool=false,
 )
+    if !(unfoldingscheme in (:interleaved, :separate))
+        error("Unsupported unfoldingscheme: $(unfoldingscheme)")
+    end
     M = 2^R
     Lx = xmax - xmin
     Lv = vmax - vmin
@@ -38,7 +42,9 @@ function PhaseSpaceGrids(
 
     x_grid = DiscretizedGrid{1}(R, xmin, xmax)
     v_grid = DiscretizedGrid{1}(R, vmin, vmax)
-    x_v_grid = DiscretizedGrid{2}(R, (xmin, vmin), (xmax, vmax); unfoldingscheme=unfoldingscheme)
+    x_v_grid = unfoldingscheme == :interleaved ?
+        DiscretizedGrid{2}(R, (xmin, vmin), (xmax, vmax); unfoldingscheme=unfoldingscheme) :
+        nothing
     kx_grid = InherentDiscreteGrid{1}(R, 0)
     kv_grid = InherentDiscreteGrid{1}(R, 0)
 
@@ -61,6 +67,7 @@ function PhaseSpaceGrids(
         x_v_grid,
         kx_grid,
         kv_grid,
+        unfoldingscheme,
         x_lsb_first,
         v_lsb_first,
         kx_lsb_first,
@@ -68,8 +75,20 @@ function PhaseSpaceGrids(
     )
 end
 
+function split_xv_bits(phase::PhaseSpaceGrids, q_bits::AbstractVector{Int})
+    return split_bits(q_bits, phase.R, phase.unfoldingscheme)
+end
+
+function combine_xv_bits(
+    phase::PhaseSpaceGrids,
+    q_x::AbstractVector{Int},
+    q_v::AbstractVector{Int},
+)
+    return combine_bits(q_x, q_v, phase.unfoldingscheme)
+end
+
 function quantics_to_origcoord_xv(phase::PhaseSpaceGrids, q_bits::AbstractVector{Int})
-    q_x, q_v = split_interleaved_bits(q_bits, phase.R)
+    q_x, q_v = split_xv_bits(phase, q_bits)
     q_x_aligned = maybe_reverse_bits(q_x, phase.x_lsb_first)
     q_v_aligned = maybe_reverse_bits(q_v, phase.v_lsb_first)
     x = quantics_to_origcoord(phase.x_grid, q_x_aligned)
@@ -82,5 +101,5 @@ function origcoord_to_quantics_xv(phase::PhaseSpaceGrids, x::Real, v::Real)
     q_v = origcoord_to_quantics(phase.v_grid, v)
     q_x = maybe_reverse_bits(q_x, phase.x_lsb_first)
     q_v = maybe_reverse_bits(q_v, phase.v_lsb_first)
-    return interleave_bits(q_x, q_v)
+    return combine_xv_bits(phase, q_x, q_v)
 end

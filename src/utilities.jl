@@ -14,12 +14,43 @@ function interleave_bits(q_first::AbstractVector{<:AbstractVector{Int}}, q_secon
     return [interleave_bits(q_first[i], q_second[i]) for i in eachindex(q_first)]
 end
 
+function combine_bits(
+    q_first::AbstractVector{Int},
+    q_second::AbstractVector{Int},
+    unfoldingscheme::Symbol,
+)
+    if unfoldingscheme == :interleaved
+        return interleave_bits(q_first, q_second)
+    elseif unfoldingscheme == :separate
+        return vcat(q_first, q_second)
+    end
+    error("Unsupported unfoldingscheme: $(unfoldingscheme)")
+end
+
+function combine_bits(
+    q_first::AbstractVector{<:AbstractVector{Int}},
+    q_second::AbstractVector{<:AbstractVector{Int}},
+    unfoldingscheme::Symbol,
+)
+    @assert length(q_first) == length(q_second)
+    return [combine_bits(q_first[i], q_second[i], unfoldingscheme) for i in eachindex(q_first)]
+end
+
 function maybe_reverse_bits(bits::AbstractVector{Int}, lsb_first::Bool)
     return lsb_first ? reverse(bits) : bits
 end
 
 function split_interleaved_bits(q_bits::AbstractVector{Int}, R::Int)
     return q_bits[1:2:2R], q_bits[2:2:2R]
+end
+
+function split_bits(q_bits::AbstractVector{Int}, R::Int, unfoldingscheme::Symbol)
+    if unfoldingscheme == :interleaved
+        return split_interleaved_bits(q_bits, R)
+    elseif unfoldingscheme == :separate
+        return q_bits[1:R], q_bits[(R + 1):(2R)]
+    end
+    error("Unsupported unfoldingscheme: $(unfoldingscheme)")
 end
 
 function frequency_filter(n; beta::Real = 2.0, k_cut::Real = 2^8)

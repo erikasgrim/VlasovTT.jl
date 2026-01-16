@@ -23,8 +23,8 @@ Base.@kwdef struct LandauDampingConfig
     simulation_name::String = "landau_damping"
 
     # Grid parameters
-    R::Int = 15
-    k_cut::Int = 2^6
+    R::Int = 12
+    k_cut::Int = 2^8
     beta::Float64 = 2.0
     xmin::Float64 = -2pi
     xmax::Float64 = 2pi
@@ -72,7 +72,7 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
     cutoff = config.cutoff
 
     # Build phase space grids and simulation parameters
-    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=false, v_lsb_first=true)
+    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=false, v_lsb_first=false, unfoldingscheme=:separate)
     params = VlasovTT.SimulationParams(
         dt = dt,
         tolerance = TCI_tolerance,
@@ -118,7 +118,7 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
         q_x = VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.x_grid, x_pos), phase.x_lsb_first)
         for v_pos in [-1.0, 0.0, 1.0]
             q_v = VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.v_grid, v_pos), phase.v_lsb_first)
-            push!(pivots, VlasovTT.interleave_bits(q_x, q_v))
+            push!(pivots, VlasovTT.combine_xv_bits(phase, q_x, q_v))
         end
     end
     ic_fn = linear_landau_damping_ic(phase; A = 0.1, v0 = 0.0, vt = 1.0, mode = 1)
@@ -304,6 +304,6 @@ end
 
 run_simulation_sweep(
     parameter = :cutoff,
-    values = [1e-7, 1e-8, 1e-9, 1e-10],
+    values = [1e-8],
     sweep_name = "cutoff2",
 )

@@ -20,17 +20,66 @@ function build_fourier_mpos(
     v_lsb_first::Bool = false,
     kx_lsb_first::Union{Bool,Nothing} = nothing,
     kv_lsb_first::Union{Bool,Nothing} = nothing,
+    unfoldingscheme::Symbol = :interleaved,
 )
     kx_lsb_first = kx_lsb_first === nothing ? !x_lsb_first : kx_lsb_first
     kv_lsb_first = kv_lsb_first === nothing ? !v_lsb_first : kv_lsb_first
     fourier_tol = 1e-12
-    x_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = -1.0, tolerance = fourier_tol, lsb_first = x_lsb_first)
-    v_fourier_mpo = stretched_fourier_mpo(R, 2, 2; sign = -1.0, tolerance = fourier_tol, lsb_first = v_lsb_first)
-    x_inv_fourier_mpo = stretched_fourier_mpo(R, 1, 2; sign = 1.0, tolerance = fourier_tol, lsb_first = kx_lsb_first)
-    v_inv_fourier_mpo = stretched_fourier_mpo(R, 2, 2; sign = 1.0, tolerance = fourier_tol, lsb_first = kv_lsb_first)
+    x_fourier_mpo = stretched_fourier_mpo(
+        R,
+        1,
+        2;
+        sign = -1.0,
+        tolerance = fourier_tol,
+        lsb_first = x_lsb_first,
+        unfoldingscheme = unfoldingscheme,
+    )
+    v_fourier_mpo = stretched_fourier_mpo(
+        R,
+        2,
+        2;
+        sign = -1.0,
+        tolerance = fourier_tol,
+        lsb_first = v_lsb_first,
+        unfoldingscheme = unfoldingscheme,
+    )
+    x_inv_fourier_mpo = stretched_fourier_mpo(
+        R,
+        1,
+        2;
+        sign = 1.0,
+        tolerance = fourier_tol,
+        lsb_first = kx_lsb_first,
+        unfoldingscheme = unfoldingscheme,
+    )
+    v_inv_fourier_mpo = stretched_fourier_mpo(
+        R,
+        2,
+        2;
+        sign = 1.0,
+        tolerance = fourier_tol,
+        lsb_first = kv_lsb_first,
+        unfoldingscheme = unfoldingscheme,
+    )
 
-    fourier_mpo = stretched_fourier_mpo(R, 1, 1; sign = -1.0, tolerance = fourier_tol, lsb_first = x_lsb_first)
-    inv_fourier_mpo = stretched_fourier_mpo(R, 1, 1; sign = 1.0, tolerance = fourier_tol, lsb_first = kx_lsb_first)
+    fourier_mpo = stretched_fourier_mpo(
+        R,
+        1,
+        1;
+        sign = -1.0,
+        tolerance = fourier_tol,
+        lsb_first = x_lsb_first,
+        unfoldingscheme = unfoldingscheme,
+    )
+    inv_fourier_mpo = stretched_fourier_mpo(
+        R,
+        1,
+        1;
+        sign = 1.0,
+        tolerance = fourier_tol,
+        lsb_first = kx_lsb_first,
+        unfoldingscheme = unfoldingscheme,
+    )
 
     return (
         x_fourier_mpo = x_fourier_mpo,
@@ -124,10 +173,11 @@ function build_filtering_mpo(
     v0::Real = 1e-1,
     kx_lsb_first::Bool = false,
     kv_lsb_first::Bool = false,
+    unfoldingscheme::Symbol = :interleaved,
 )
+    R = length(kx_grid)
     function filter_kernel(q_bits)
-        q_kx = q_bits[1:2:end]
-        q_kv = q_bits[2:2:end]
+        q_kx, q_kv = split_bits(q_bits, R, unfoldingscheme)
         kx = quantics_to_origcoord(kx_grid, maybe_reverse_bits(q_kx, kx_lsb_first))
         kv = quantics_to_origcoord(kv_grid, maybe_reverse_bits(q_kv, kv_lsb_first))
 
@@ -145,8 +195,7 @@ function build_filtering_mpo(
         maybe_reverse_bits(origcoord_to_quantics(kv_grid, n_to_k(n, M)), kv_lsb_first)
         for n in -5:5
     ]
-    initial_pivots = interleave_bits(initial_pivots_x, initial_pivots_v)
-    R = length(kx_grid)
+    initial_pivots = combine_bits(initial_pivots_x, initial_pivots_v, unfoldingscheme)
     localdims = fill(2, 2R)
 
     tci, _, _ = TCI.crossinterpolate2(
@@ -181,6 +230,7 @@ function build_solver_mpos(
         v_lsb_first = v_lsb_first,
         kx_lsb_first = kx_lsb_first,
         kv_lsb_first = kv_lsb_first,
+        unfoldingscheme = phase.unfoldingscheme,
     )
 
     full_free_streaming_fourier_mpo = get_free_streaming_mpo(
@@ -194,6 +244,7 @@ function build_solver_mpos(
         beta = beta,
         kx_lsb_first = kx_lsb_first,
         v_lsb_first = v_lsb_first,
+        unfoldingscheme = phase.unfoldingscheme,
     )
 
     half_free_streaming_fourier_mpo = get_free_streaming_mpo(
@@ -207,6 +258,7 @@ function build_solver_mpos(
         beta = beta,
         kx_lsb_first = kx_lsb_first,
         v_lsb_first = v_lsb_first,
+        unfoldingscheme = phase.unfoldingscheme,
     )
 
     poisson_mpo = get_poisson_mpo(

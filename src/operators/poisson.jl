@@ -26,30 +26,52 @@ function get_poisson_mpo(
     return tt_to_mpo(tt)
 end
 
-function get_charge_density(psi::MPS; dv::Real=1.0)
+function get_charge_density(
+    psi::MPS;
+    dv::Real=1.0,
+    unfoldingscheme::Symbol=:interleaved,
+)
     N = length(psi)
     N == 0 && return psi
 
     working = copy(ITensors.cpu(psi))
-    for i in 2:2:N
-        si = siteind(working, i)
-        ones_vec = ITensor(si)
-        for n in 1:dim(si)
-            ones_vec[si => n] = 1.0
+    if unfoldingscheme == :interleaved
+        for i in 2:2:N
+            si = siteind(working, i)
+            ones_vec = ITensor(si)
+            for n in 1:dim(si)
+                ones_vec[si => n] = 1.0
+            end
+
+            Ai = working[i] * ones_vec
+            if i < N
+                working[i + 1] = Ai * working[i + 1]
+            else
+                working[i - 1] = working[i - 1] * Ai
+            end
+            working[i] = ITensor(1.0)
         end
 
-        Ai = working[i] * ones_vec
-        if i < N
-            working[i + 1] = Ai * working[i + 1]
-        else
+        odd_tensors = [working[i] for i in 1:N if isodd(i)]
+        return MPS(odd_tensors) * dv
+    elseif unfoldingscheme == :separate
+        R = N ÷ 2
+        for i in N:-1:(R + 1)
+            si = siteind(working, i)
+            ones_vec = ITensor(si)
+            for n in 1:dim(si)
+                ones_vec[si => n] = 1.0
+            end
+
+            Ai = working[i] * ones_vec
             working[i - 1] = working[i - 1] * Ai
+            working[i] = ITensor(1.0)
         end
-        working[i] = ITensor(1.0)
-    end
 
-    odd_tensors = [working[i] for i in 1:N if isodd(i)]
-    #odd_tensors[1] *= dv
-    return MPS(odd_tensors) * dv
+        x_tensors = [working[i] for i in 1:R]
+        return MPS(x_tensors) * dv
+    end
+    error("Unsupported unfoldingscheme: $(unfoldingscheme)")
 end
 
 function ones_mps(sites)
@@ -109,8 +131,9 @@ function get_electric_field_mps(
     maxrank_ef=16,
     alg="naive",
     cache::Union{PoissonCache,Nothing}=nothing,
+    unfoldingscheme::Symbol=:interleaved,
 )
-    cd_mps = get_charge_density(psi_mps; dv) # Electron density
+    cd_mps = get_charge_density(psi_mps; dv, unfoldingscheme=unfoldingscheme) # Electron density
 
     # Plot charge charge density.
     id_mps = isnothing(cache) ? ones_mps(siteinds(cd_mps)) : cache.id_mps
@@ -124,28 +147,48 @@ function get_electric_field_mps(
     return cd_mps, electric_field_mps
 end
 
-function get_charge_density_kv(psi::MPS; dv::Real=1.0)
+function get_charge_density_kv(
+    psi::MPS;
+    dv::Real=1.0,
+    unfoldingscheme::Symbol=:interleaved,
+)
     N = length(psi)
     N == 0 && return psi
 
     working = copy(ITensors.cpu(psi))
-    for i in 2:2:N
-        si = siteind(working, i)
-        zero_mode_vec = ITensor(si)
-        zero_mode_vec[si => 1] = 1.0
+    if unfoldingscheme == :interleaved
+        for i in 2:2:N
+            si = siteind(working, i)
+            zero_mode_vec = ITensor(si)
+            zero_mode_vec[si => 1] = 1.0
 
-        Ai = working[i] * zero_mode_vec
-        if i < N
-            working[i + 1] = Ai * working[i + 1]
-        else
-            working[i - 1] = working[i - 1] * Ai
+            Ai = working[i] * zero_mode_vec
+            if i < N
+                working[i + 1] = Ai * working[i + 1]
+            else
+                working[i - 1] = working[i - 1] * Ai
+            end
+            working[i] = ITensor(1.0)
         end
-        working[i] = ITensor(1.0)
-    end
 
-    odd_tensors = [working[i] for i in 1:N if isodd(i)]
-    #odd_tensors[1] *= dv
-    return MPS(odd_tensors) * dv
+        odd_tensors = [working[i] for i in 1:N if isodd(i)]
+        return MPS(odd_tensors) * dv
+    elseif unfoldingscheme == :separate
+        R = N ÷ 2
+        for i in N:-1:(R + 1)
+            si = siteind(working, i)
+            zero_mode_vec = ITensor(si)
+            zero_mode_vec[si => 1] = 1.0
+
+            Ai = working[i] * zero_mode_vec
+            working[i - 1] = working[i - 1] * Ai
+            working[i] = ITensor(1.0)
+        end
+
+        x_tensors = [working[i] for i in 1:R]
+        return MPS(x_tensors) * dv
+    end
+    error("Unsupported unfoldingscheme: $(unfoldingscheme)")
 end
 
 function get_electric_field_mps_kv(
@@ -156,8 +199,9 @@ function get_electric_field_mps_kv(
     maxrank_ef=16,
     alg="naive",
     cache::Union{PoissonCache,Nothing}=nothing,
+    unfoldingscheme::Symbol=:interleaved,
 )
-    cd_mps = get_charge_density_kv(psi_mps; dv) # Electron density
+    cd_mps = get_charge_density_kv(psi_mps; dv, unfoldingscheme=unfoldingscheme) # Electron density
 
     id_mps = isnothing(cache) ? ones_mps(siteinds(cd_mps)) : cache.id_mps
     cd_mps = id_mps - cd_mps # Charge density
