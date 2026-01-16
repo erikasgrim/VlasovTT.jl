@@ -39,9 +39,9 @@ linear_indices = findall(i -> (two_stream_data.times[i] >= tmin) && (two_stream_
 
 p1 = plot(
     two_stream_data.times,
-    two_stream_data.ef_energy,
+    two_stream_data.ef_energy_mode1,
     xlabel = L"t\ [\omega_{pe}^{-1}]",
-    ylabel = L"\mathcal{E}",
+    ylabel = L"\mathcal{E}_1",
     yaxis = :log10,
     linestyle = :solid,
     label = "Simulation",
@@ -60,12 +60,16 @@ p1 = plot!(
 
 energy_rel = abs.(two_stream_data.total_energy .- two_stream_data.total_energy[1]) ./ abs(two_stream_data.total_energy[1])
 momentum_abs = abs.(two_stream_data.momentum)
+positive_min(values) = minimum(filter(>(0), values))
+y_limits = (min(positive_min(momentum_abs), positive_min(energy_rel[2:end])),
+    max(maximum(momentum_abs), maximum(energy_rel[2:end])))
 
 p2 = plot(
     two_stream_data.times,
     momentum_abs,
     xlabel = L"t\ [\omega_{pe}^{-1}]",
     ylabel = L"|P|",
+    ylims = y_limits,
     yaxis = :log10,
     linestyle = :solid,
     color = 2,
@@ -80,6 +84,7 @@ p3 = plot(
     energy_rel[2:end],
     xlabel = L"t\ [\omega_{pe}^{-1}]",
     ylabel = L"|\Delta E|/|E_0|",
+    ylims = y_limits,
     yaxis = :log10,
     linestyle = :solid,
     color =  3,
@@ -88,6 +93,8 @@ p3 = plot(
     title = "(c)",
     titlelocation = :left,
 )
+
+println(maximum(energy_rel))
 
 p3_mps_path = joinpath(two_stream_ref, "mps", "psi_step1.h5")
 psi_mps = h5open(p3_mps_path, "r") do file
@@ -162,11 +169,11 @@ p6 = heatmap(
 )
 
 l = @layout [
-    grid(1, 1){0.4h}
+    grid(1, 1){0.3h}
     grid(1, 2){0.3h}
-    grid(1, 3, widths = [0.3, 0.3, 0.4]){0.3h}
+    grid(1, 3, widths = [0.3, 0.3, 0.4]){0.4h}
 ]
-plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 750))
+plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 950), left_margin = 2mm)
 
 # Save figure
 savefig(plt, "plots/paper_figures/physical_validation_ts.pdf")

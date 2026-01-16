@@ -9,6 +9,21 @@ PlotDefaults.apply!()
 ts_dir = "final_results/two_stream/sweep_cutoff/"
 landau_dir = "final_results/landau_damping/sweep_cutoff/"
 
+cutoff_labels = Dict(1e-7 => "10^{-7}", 1e-10 => "10^{-10}")
+
+function cutoff_label(cutoff)
+    for (key, label) in cutoff_labels
+        if isfinite(cutoff) && isapprox(cutoff, key; rtol = 1e-12, atol = 0.0)
+            return label
+        end
+    end
+    if isfinite(cutoff) && cutoff > 0
+        exponent = round(Int, log10(cutoff))
+        return "10^{$(exponent)}"
+    end
+    return "NaN"
+end
+
 function read_sweep(dir)
     entries = sort(filter(isdir, readdir(dir; join = true)))
     datasets = []
@@ -21,7 +36,8 @@ function read_sweep(dir)
             for line in eachline(params_path)
                 occursin("SVD_tolerance", line) || continue
                 _, val = strip.(split(line, "=", limit = 2))
-                label = LaTeXString("\\epsilon = $(strip(val))")
+                cutoff = parse(Float64, strip(val))
+                label = latexstring("\$\\epsilon = $(cutoff_label(cutoff))\$")
                 break
             end
         end
@@ -49,6 +65,17 @@ end
 
 landau_sets = read_sweep(landau_dir)
 ts_sets = read_sweep(ts_dir)
+positive_min(values) = minimum(filter(>(0), values))
+
+energy_landau = vcat([rel_dev(s.data.total_energy)[2:end] for s in landau_sets]...)
+energy_ts = vcat([rel_dev(s.data.total_energy)[2:end] for s in ts_sets]...)
+row1_limits = (min(positive_min(energy_landau), positive_min(energy_ts)),
+    max(maximum(energy_landau), maximum(energy_ts)))
+
+momentum_landau = vcat([abs_dev(s.data.momentum)[2:end] for s in landau_sets]...)
+momentum_ts = vcat([abs_dev(s.data.momentum)[2:end] for s in ts_sets]...)
+row2_limits = (min(positive_min(momentum_landau), positive_min(momentum_ts)),
+    max(maximum(momentum_landau), maximum(momentum_ts)))
 
 p1 = plot(
     ylabel = L"|\Delta E| / |E_0|",
@@ -57,6 +84,7 @@ p1 = plot(
     legend = nothing,
     xticks = :none,
     yaxis = :log10,
+    ylims = row1_limits,
     left_margin = 2mm,
 )
 for s in landau_sets
@@ -67,9 +95,10 @@ end
 p2 = plot(
     title = "(b)",
     titlelocation = :left,
-    legend = :topright,
+    legend = nothing,
     xticks = :none,
     yaxis = :log10,
+    ylims = row1_limits,
 )
 for s in ts_sets
     times, values = drop_first(s.data.times, rel_dev(s.data.total_energy))
@@ -77,12 +106,14 @@ for s in ts_sets
 end
 
 p3 = plot(
+    xlabel = L"t\ [\omega_{pe}^{-1}]",
     ylabel = L"|\Delta P|",
     title = "(c)",
     titlelocation = :left,
     legend = nothing,
     xticks = :none,
     yaxis = :log10,
+    ylims = row2_limits,
     left_margin = 2mm,
 )
 for s in landau_sets
@@ -91,17 +122,19 @@ for s in landau_sets
 end
 
 p4 = plot(
+    xlabel = L"t\ [\omega_{pe}^{-1}]",
     title = "(d)",
     titlelocation = :left,
-    legend = nothing,
+    legend = :bottomright,
     xticks = :none,
     yaxis = :log10,
+    ylims = row2_limits,
 )
 for s in ts_sets
     times, values = drop_first(s.data.times, abs_dev(s.data.momentum))
     plot!(p4, times, values; label = s.name)
 end
 
-plt = plot(p1, p2, p3, p4; layout = (2, 2), link = :x)
+plt = plot(p1, p2, p3, p4; layout = (2, 2), link = :x, bottom_margin = 2mm, size = (833, 600))
 
 savefig(plt, "plots/paper_figures/conservation.pdf")

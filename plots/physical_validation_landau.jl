@@ -32,13 +32,13 @@ end
 
 # Linear fit
 landau_gamma = -0.15139
-landau_analytic = [2e-1 * exp(2 * landau_gamma * t) for t in landau_data.times]
+landau_analytic = [1e-1 * exp(2 * landau_gamma * t) for t in landau_data.times]
 
 p1 = plot(
     landau_data.times,
-    [landau_data.ef_energy, landau_analytic],
+    [landau_data.ef_energy_mode1, landau_analytic],
     xlabel = L"t\ [\omega_{pe}^{-1}]",
-    ylabel = L"\mathcal{E}",
+    ylabel = L"\mathcal{E}_1",
     yaxis = :log10,
     linestyle = [:solid :dot],
     color = [1 :black],
@@ -50,12 +50,16 @@ p1 = plot(
 
 energy_rel = abs.(landau_data.total_energy .- landau_data.total_energy[1]) ./ abs(landau_data.total_energy[1])
 momentum_abs = abs.(landau_data.momentum)
+positive_min(values) = minimum(filter(>(0), values))
+y_limits = (min(positive_min(momentum_abs), positive_min(energy_rel[2:end])),
+    max(maximum(momentum_abs), maximum(energy_rel[2:end])))
 
 p2 = plot(
     landau_data.times,
     momentum_abs,
     xlabel = L"t\ [\omega_{pe}^{-1}]",
     ylabel = L"|P|",
+    ylims = y_limits,
     yaxis = :log10,
     linestyle = :solid,
     color = 2,
@@ -70,6 +74,7 @@ p3 = plot(
     energy_rel[2:end],
     xlabel = L"t\ [\omega_{pe}^{-1}]",
     ylabel = L"|\Delta E|/|E_0|",
+    ylims = y_limits,
     yaxis = :log10,
     linestyle = :solid,
     color =  3,
@@ -152,11 +157,11 @@ p6 = heatmap(
 )
 
 l = @layout [
-    grid(1, 1){0.4h}
+    grid(1, 1){0.3h}
     grid(1, 2){0.3h}
-    grid(1, 3, widths = [0.3, 0.3, 0.4]){0.3h}
+    grid(1, 3, widths = [0.29, 0.29, 0.42]){0.4h}
 ]
-plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 750))
+plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 950), left_margin = 2mm)
 
 # Save figure
 savefig(plt, "plots/paper_figures/physical_validation_landau.pdf")

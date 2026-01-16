@@ -1,4 +1,5 @@
 using Plots
+using Plots.PlotMeasures
 using LaTeXStrings
 using VlasovTT: read_data
 
@@ -7,6 +8,21 @@ PlotDefaults.apply!()
 
 ts_dir = "final_results/two_stream/sweep_cutoff/"
 landau_dir = "final_results/landau_damping/sweep_cutoff/"
+
+cutoff_labels = Dict(1e-7 => "10^{-7}", 1e-10 => "10^{-10}")
+
+function cutoff_label(cutoff)
+    for (key, label) in cutoff_labels
+        if isfinite(cutoff) && isapprox(cutoff, key; rtol = 1e-12, atol = 0.0)
+            return label
+        end
+    end
+    if isfinite(cutoff) && cutoff > 0
+        exponent = round(Int, log10(cutoff))
+        return "10^{$(exponent)}"
+    end
+    return "NaN"
+end
 
 function read_sweep(dir)
     entries = sort(filter(isdir, readdir(dir; join = true)))
@@ -20,7 +36,8 @@ function read_sweep(dir)
             for line in eachline(params_path)
                 occursin("SVD_tolerance", line) || continue
                 _, val = strip.(split(line, "=", limit = 2))
-                label = "ϵ = $(strip(val))"
+                cutoff = parse(Float64, strip(val))
+                label = latexstring("\$\\epsilon = $(cutoff_label(cutoff))\$")
                 break
             end
         end
@@ -34,7 +51,7 @@ ts_sets = read_sweep(ts_dir)
 
 p1 = plot(
     xlabel = "",
-    ylabel = L"\mathcal{E}",
+    ylabel = L"\mathcal{E}_1",
     yaxis = :log10,
     title = "(a)",
     titlelocation = :left,
@@ -42,7 +59,7 @@ p1 = plot(
     xticks = :none,
 )
 for s in landau_sets
-    plot!(p1, s.data.times, s.data.ef_energy; label = s.name)
+    plot!(p1, s.data.times, s.data.ef_energy_mode1; label = s.name)
 end
 
 p2 = plot(
@@ -54,7 +71,7 @@ p2 = plot(
     xticks = :none,
 )
 for s in ts_sets
-    plot!(p2, s.data.times, s.data.ef_energy; label = s.name)
+    plot!(p2, s.data.times, s.data.ef_energy_mode1; label = s.name)
 end
 
 p3 = plot(
@@ -78,6 +95,6 @@ for s in ts_sets
     plot!(p4, s.data.times, s.data.bond_dimensions; label = s.name)
 end
 
-plt = plot(p1, p2, p3, p4; layout = (2, 2))
+plt = plot(p1, p2, p3, p4; layout = (2, 2), left_margin = 2mm, bottom_margin = 2mm, size = (833, 600))
 
 savefig(plt, "plots/paper_figures/truncation_effects.pdf")
