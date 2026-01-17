@@ -182,7 +182,7 @@ function strang_step_unfiltered_TCI!(
         E_val = electric_field_tt(q_x)
 
         phase_angle = E_val * kv_phys * params.dt
-        return exp(im * phase_angle * frequency_filter(n_v; beta=params.beta, k_cut=params.k_cut)) * psi_tt(q_bits) 
+        return exp(im * phase_angle) * psi_tt(q_bits)# * frequency_filter(n_v; beta=params.beta, k_cut=params.k_cut)
     end
     #kernel = TCI.ThreadedBatchEvaluator{ComplexF64}(kernel, localdims)
     kernel = TCI.CachedFunction{ComplexF64}(kernel, localdims)

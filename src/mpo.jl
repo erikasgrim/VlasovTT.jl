@@ -15,7 +15,7 @@ end
 
 function build_fourier_mpos(
     R::Int;
-    tolerance::Real = 1e-8,
+    fourier_tol::Real = 1e-13,
     x_lsb_first::Bool = false,
     v_lsb_first::Bool = false,
     kx_lsb_first::Union{Bool,Nothing} = nothing,
@@ -24,7 +24,6 @@ function build_fourier_mpos(
 )
     kx_lsb_first = kx_lsb_first === nothing ? !x_lsb_first : kx_lsb_first
     kv_lsb_first = kv_lsb_first === nothing ? !v_lsb_first : kv_lsb_first
-    fourier_tol = 1e-12
     x_fourier_mpo = stretched_fourier_mpo(
         R,
         1,
@@ -225,7 +224,7 @@ function build_solver_mpos(
 
     fourier = build_fourier_mpos(
         phase.R;
-        tolerance = tolerance,
+        fourier_tol = 1e-13,
         x_lsb_first = x_lsb_first,
         v_lsb_first = v_lsb_first,
         kx_lsb_first = kx_lsb_first,
@@ -302,7 +301,7 @@ function prepare_itensor_mpos(
     mpos::SolverMPOs,
     sites_mpo;
     use_gpu::Bool = false,
-    cutoff::Real = 1e-8,
+    cutoff::Real = 1e-12,
 )
     full_free_stream_fourier_mpo_it = MPO(mpos.full_free_streaming_fourier_mpo; sites = sites_mpo)
     half_free_stream_fourier_mpo_it = MPO(mpos.half_free_streaming_fourier_mpo; sites = sites_mpo)
@@ -320,7 +319,6 @@ function prepare_itensor_mpos(
         v_fourier_mpo_it,
         x_inv_fourier_mpo_it;
         alg = "naive",
-        cutoff = cutoff,
     )
     println("x_inv_v_fourier_mpo_it rank: ", maxlinkdim(x_inv_v_fourier_mpo_it))
     
@@ -328,7 +326,6 @@ function prepare_itensor_mpos(
         x_fourier_mpo_it,
         v_inv_fourier_mpo_it;
         alg = "naive",
-        cutoff = cutoff,
     )
     println("v_inv_x_fourier_mpo_it rank: ", maxlinkdim(v_inv_x_fourier_mpo_it))
 
