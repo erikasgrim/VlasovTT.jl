@@ -212,7 +212,7 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
         write_data(
             step, 
             round(step * params.dt, digits=n_digits), 
-            round(real(total_charge(psi_plot, phase, observables_cache)), digits=n_digits),
+            round(charge, digits=n_digits),
             round(real(electric_field_energy(ef_mps, phase)), digits=n_digits),
             round(real(ef_energy_first_mode), digits=n_digits),
             round(real(kinetic_energy(psi_plot, phase, observables_cache)), digits=n_digits),
@@ -295,5 +295,5 @@ end
 run_simulation_sweep(
     parameter = :cutoff,
     values = [1e-8],
-    sweep_name = "cutoff",
+    sweep_name = "cutoff10",
 )
