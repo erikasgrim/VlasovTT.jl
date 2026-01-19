@@ -18,7 +18,7 @@ using Dates
 
 Base.@kwdef struct TwoStreamConfig
     # Simulation parameters
-    dt::Float64 = 0.1
+    dt::Float64 = 0.10
     Tfinal::Float64 = 30.0
     simulation_name::String = "two_stream"
 
@@ -71,7 +71,7 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
     cutoff = config.cutoff
 
     # Build phase space grids and simulation parameters
-    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=false, v_lsb_first=false, unfoldingscheme=:separate)
+    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=false, v_lsb_first=true, unfoldingscheme=:interleaved)
     params = VlasovTT.SimulationParams(
         dt = dt,
         tolerance = TCI_tolerance,
@@ -82,6 +82,7 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
         beta = beta,
         use_gpu = use_gpu,
         alg = "naive",
+        precombine_streaming_mpo = false,
     )
 
     # Set up simulation directories
@@ -133,6 +134,8 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
         solver_mpos,
         sites_mpo;
         use_gpu = params.use_gpu,
+        precombine_streaming_mpo = params.precombine_streaming_mpo,
+        combine_fourier_mpo = false,
     )
 
     if params.use_gpu
@@ -153,7 +156,12 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
     # Half step in free streaming
     psi_mps = apply(itensor_mpos.x_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
     psi_mps = apply(itensor_mpos.half_free_stream_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
-    psi_mps = apply(itensor_mpos.x_inv_v_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
+    if itensor_mpos.x_inv_v_fourier === nothing
+        psi_mps = apply(itensor_mpos.x_inv_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
+        psi_mps = apply(itensor_mpos.v_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
+    else
+        psi_mps = apply(itensor_mpos.x_inv_v_fourier, psi_mps; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
+    end
 
     previous_tci = nothing
     ef_mps = nothing
@@ -176,6 +184,7 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
                 mps_sites,
                 previous_tci;
                 params = params,
+                streaming_mpo_it = itensor_mpos.streaming,
             )
         catch err
             @error "strang_step_unfiltered_TCI! failed" exception = err
@@ -275,7 +284,7 @@ function run_simulation_sweep(;
     values,
     sweep_name::Union{Nothing,String} = nothing,
     use_gpu::Bool = true,
-    save_every::Int = 10,
+    save_every::Int = 20,
 )
     if !(parameter in fieldnames(TwoStreamConfig))
         error("Unknown parameter: $(parameter). Expected one of $(fieldnames(TwoStreamConfig)).")
@@ -300,6 +309,6 @@ end
 
 run_simulation_sweep(
     parameter = :cutoff,
-    values = [1e-7, 1e-8, 1e-9],
-    sweep_name = "cutoff",
+    values = [1e-8],
+    sweep_name = "cutoff9",
 )

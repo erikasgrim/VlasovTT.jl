@@ -10,6 +10,7 @@ Base.@kwdef struct SimulationParams
     use_gpu::Bool = false
     alg::String = "naive"
     l1_normalize::Bool = true
+    precombine_streaming_mpo::Bool = true
 end
 
 function strang_step_filtered_TCI!(
@@ -144,11 +145,12 @@ function strang_step_unfiltered_TCI!(
     x_inv_fourier_mpo_it::MPO,
     v_fourier_mpo_it::MPO,
     v_inv_fourier_mpo_it::MPO,
-    x_inv_v_fourier_mpo_it::MPO,
-    v_inv_x_fourier_mpo_it::MPO,
+    x_inv_v_fourier_mpo_it::Union{MPO,Nothing},
+    v_inv_x_fourier_mpo_it::Union{MPO,Nothing},
     mps_sites,
     previous_tci;
     params::SimulationParams,
+    streaming_mpo_it::Union{MPO,Nothing}=nothing,
     tci_profile::Bool = true,
     tci_profile_label::String = "",
 )   
@@ -182,7 +184,7 @@ function strang_step_unfiltered_TCI!(
         E_val = electric_field_tt(q_x)
 
         phase_angle = E_val * kv_phys * params.dt
-        return exp(im * phase_angle) * psi_tt(q_bits)# * frequency_filter(n_v; beta=params.beta, k_cut=params.k_cut)
+        return exp(im * phase_angle) * psi_tt(q_bits) * frequency_filter(n_v; beta=params.beta, k_cut=params.k_cut)
     end
     #kernel = TCI.ThreadedBatchEvaluator{ComplexF64}(kernel, localdims)
     kernel = TCI.CachedFunction{ComplexF64}(kernel, localdims)
@@ -206,14 +208,14 @@ function strang_step_unfiltered_TCI!(
 
     tci_start = time()
     if previous_tci === nothing
-        pivots = acceleration_pivots(
-            phase.x_grid,
-            phase.kv_grid,
-            phase.M;
-            x_lsb_first = phase.x_lsb_first,
-            kv_lsb_first = phase.kv_lsb_first,
-            unfoldingscheme = phase.unfoldingscheme,
-        )
+        # pivots = acceleration_pivots(
+        #     phase.x_grid,
+        #     phase.kv_grid,
+        #     phase.M;
+        #     x_lsb_first = phase.x_lsb_first,
+        #     kv_lsb_first = phase.kv_lsb_first,
+        #     unfoldingscheme = phase.unfoldingscheme,
+        # )
         pivots = TCI.optfirstpivot(kernel, localdims)
 
         psi_tt = TCI.crossinterpolate2(
@@ -222,7 +224,6 @@ function strang_step_unfiltered_TCI!(
             localdims,
             [pivots];
             tolerance = params.tolerance,
-            maxbonddim = params.maxrank,
         )[1]
     else
         TCI.optimize!(
@@ -233,6 +234,17 @@ function strang_step_unfiltered_TCI!(
             verbosity = 0,
             )
         psi_tt = previous_tci
+
+        # pivots = TCI.optfirstpivot(kernel, localdims)
+
+        # psi_tt = TCI.crossinterpolate2(
+        #     ComplexF64,
+        #     kernel,
+        #     localdims,
+        #     [pivots];
+        #     tolerance = params.tolerance,
+        #     pivotsearch = :rook,
+        # )[1]
     end
     tci_time = time() - tci_start
     if tci_profile
@@ -247,14 +259,31 @@ function strang_step_unfiltered_TCI!(
     end
     
     mpo_start = time()
-    # Inverse Fourier transform in v, Fourier transform in x
-    psi_mps = apply(v_inv_x_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    if streaming_mpo_it === nothing
+        if v_inv_x_fourier_mpo_it === nothing || x_inv_v_fourier_mpo_it === nothing
+            # Apply separate Fourier MPOs to avoid large composite MPOs.
+            psi_mps = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+            psi_mps = apply(x_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
 
-    # Free streaming step
-    psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
-    
-    # Inverse Fourier transform in x, Fourier transform in v
-    psi_mps = apply(x_inv_v_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+            # Free streaming step
+            psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+            
+            # Inverse Fourier transform in x, Fourier transform in v
+            psi_mps = apply(x_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+            psi_mps = apply(v_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+        else
+            # Inverse Fourier transform in v, Fourier transform in x
+            psi_mps = apply(v_inv_x_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+
+            # Free streaming step
+            psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+            
+            # Inverse Fourier transform in x, Fourier transform in v
+            psi_mps = apply(x_inv_v_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+        end
+    else
+        psi_mps = apply(streaming_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    end
     mpo_time = time() - mpo_start
     step_time = time() - steptime_start
 
@@ -346,11 +375,12 @@ function strang_step_unfiltered_RK4!(
     x_inv_fourier_mpo_it::MPO,
     v_fourier_mpo_it::MPO,
     v_inv_fourier_mpo_it::MPO,
-    x_inv_v_fourier_mpo_it::MPO,
-    v_inv_x_fourier_mpo_it::MPO,
+    x_inv_v_fourier_mpo_it::Union{MPO,Nothing},
+    v_inv_x_fourier_mpo_it::Union{MPO,Nothing},
     stretched_kv_mpo_it::MPO,
     mpo_sites;
     params::SimulationParams,
+    streaming_mpo_it::Union{MPO,Nothing}=nothing,
     return_field::Bool = false,
 )
 
@@ -390,14 +420,31 @@ function strang_step_unfiltered_RK4!(
 
     psi_mps = add(psi_mps, (dt / 6) * (k1 + 2k2 + 2k3 + k4); maxdim = params.maxrank, cutoff = params.cutoff)
 
-    # Inverse Fourier transform in v, Fourier transform in x
-    psi_mps = apply(v_inv_x_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    if streaming_mpo_it === nothing
+        if v_inv_x_fourier_mpo_it === nothing || x_inv_v_fourier_mpo_it === nothing
+            # Apply separate Fourier MPOs to avoid large composite MPOs.
+            psi_mps = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+            psi_mps = apply(x_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
 
-    # Free streaming step
-    psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+            # Free streaming step
+            psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
 
-    # Inverse Fourier transform in x, Fourier transform in v
-    psi_mps = apply(x_inv_v_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+            # Inverse Fourier transform in x, Fourier transform in v
+            psi_mps = apply(x_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+            psi_mps = apply(v_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+        else
+            # Inverse Fourier transform in v, Fourier transform in x
+            psi_mps = apply(v_inv_x_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+
+            # Free streaming step
+            psi_mps = apply(free_stream_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+
+            # Inverse Fourier transform in x, Fourier transform in v
+            psi_mps = apply(x_inv_v_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+        end
+    else
+        psi_mps = apply(streaming_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    end
 
     return return_field ? (psi_mps, electric_field_mps) : psi_mps
 end

@@ -18,13 +18,13 @@ using Dates
 
 Base.@kwdef struct LandauDampingConfig
     # Simulation parameters
-    dt::Float64 = 0.1
-    Tfinal::Float64 = 30.0
+    dt::Float64 = 0.05
+    Tfinal::Float64 = 60.0
     simulation_name::String = "landau_damping"
 
     # Grid parameters
-    R::Int = 12
-    k_cut::Int = 2^8
+    R::Int = 14
+    k_cut::Int = 2^10
     beta::Float64 = 2.0
     xmin::Float64 = -2pi
     xmax::Float64 = 2pi
@@ -46,7 +46,7 @@ function with_overrides(config::LandauDampingConfig, overrides::NamedTuple)
     return LandauDampingConfig(; config_to_namedtuple(config)..., overrides...)
 end
 
-function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_every::Int = 10)
+function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_every::Int = 100)
 
     # Simulation parameters
     dt = config.dt
@@ -72,7 +72,7 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
     cutoff = config.cutoff
 
     # Build phase space grids and simulation parameters
-    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=false, v_lsb_first=false, unfoldingscheme=:separate)
+    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=true, v_lsb_first=false, unfoldingscheme=:separate)
     params = VlasovTT.SimulationParams(
         dt = dt,
         tolerance = TCI_tolerance,
@@ -134,6 +134,7 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
         solver_mpos,
         sites_mpo;
         use_gpu = params.use_gpu,
+        precombine_streaming_mpo = params.precombine_streaming_mpo,
     )
 
     if params.use_gpu
@@ -145,8 +146,8 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
     end
 
     # Values for plotting
-    x_vals = range(phase.xmin, phase.xmax; length = min(300, phase.M))
-    v_vals = range(phase.vmin, phase.vmax; length = min(300, phase.M))
+    x_vals = range(phase.xmin, phase.xmax; length = min(400, phase.M))
+    v_vals = range(phase.vmin, phase.vmax; length = min(400, phase.M))
 
     # Build cache for observables
     observables_cache = build_observables_cache(psi_mps, phase)
@@ -177,6 +178,7 @@ function run_simulation(config::LandauDampingConfig; use_gpu::Bool = true, save_
                 mps_sites,
                 previous_tci;
                 params = params,
+                streaming_mpo_it = itensor_mpos.streaming,
             )
         catch err
             @error "strang_step_unfiltered_TCI! failed" exception = err
@@ -279,7 +281,7 @@ function run_simulation_sweep(;
     values,
     sweep_name::Union{Nothing,String} = nothing,
     use_gpu::Bool = true,
-    save_every::Int = 10,
+    save_every::Int = 100,
 )
     if !(parameter in fieldnames(LandauDampingConfig))
         error("Unknown parameter: $(parameter). Expected one of $(fieldnames(LandauDampingConfig)).")

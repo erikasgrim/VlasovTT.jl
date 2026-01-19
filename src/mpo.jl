@@ -302,7 +302,13 @@ function prepare_itensor_mpos(
     sites_mpo;
     use_gpu::Bool = false,
     cutoff::Real = 1e-12,
+    precombine_streaming_mpo::Bool = false,
+    combine_fourier_mpo::Bool = true,
 )
+    if precombine_streaming_mpo && !combine_fourier_mpo
+        error("precombine_streaming_mpo requires combine_fourier_mpo=true")
+    end
+
     full_free_stream_fourier_mpo_it = MPO(mpos.full_free_streaming_fourier_mpo; sites = sites_mpo)
     half_free_stream_fourier_mpo_it = MPO(mpos.half_free_streaming_fourier_mpo; sites = sites_mpo)
 
@@ -315,50 +321,44 @@ function prepare_itensor_mpos(
     v_inv_fourier_mpo_it = MPO(mpos.v_inv_fourier_mpo; sites = sites_mpo)
 
     # Build composite x-v Fourier MPOs in ITensor space to control contraction costs.
-    x_inv_v_fourier_mpo_it = apply(
-        v_fourier_mpo_it,
-        x_inv_fourier_mpo_it;
-        alg = "naive",
-    )
-    println("x_inv_v_fourier_mpo_it rank: ", maxlinkdim(x_inv_v_fourier_mpo_it))
-    
-    v_inv_x_fourier_mpo_it = apply(
-        x_fourier_mpo_it,
-        v_inv_fourier_mpo_it;
-        alg = "naive",
-    )
-    println("v_inv_x_fourier_mpo_it rank: ", maxlinkdim(v_inv_x_fourier_mpo_it))
+    x_inv_v_fourier_mpo_it = nothing
+    v_inv_x_fourier_mpo_it = nothing
+    if combine_fourier_mpo
+        x_inv_v_fourier_mpo_it = apply(
+            v_fourier_mpo_it,
+            x_inv_fourier_mpo_it;
+            alg = "naive",
+        )
+        println("x_inv_v_fourier_mpo_it rank: ", maxlinkdim(x_inv_v_fourier_mpo_it))
+        
+        v_inv_x_fourier_mpo_it = apply(
+            x_fourier_mpo_it,
+            v_inv_fourier_mpo_it;
+            alg = "naive",
+        )
+        println("v_inv_x_fourier_mpo_it rank: ", maxlinkdim(v_inv_x_fourier_mpo_it))
+    end
 
-    full_free_stream_mpo_it = apply(
-        x_inv_fourier_mpo_it,
-        apply(
+    streaming_mpo_it = nothing
+    if precombine_streaming_mpo
+        streaming_mpo_it = apply(
             full_free_stream_fourier_mpo_it,
-            x_fourier_mpo_it;
+            v_inv_x_fourier_mpo_it;
             alg = "naive",
-            cutoff = cutoff,
-        );
-        alg = "naive",
-        cutoff = cutoff,
-    )
-
-    half_free_stream_mpo_it = apply(
-        x_inv_fourier_mpo_it,
-        apply(
-            half_free_stream_fourier_mpo_it,
-            x_fourier_mpo_it;
+            cutoff = 1e-10,
+        )
+        streaming_mpo_it = apply(
+            x_inv_v_fourier_mpo_it,
+            streaming_mpo_it;
             alg = "naive",
-            cutoff = cutoff,
-        );
-        alg = "naive",
-        cutoff = cutoff,
-    )
+            cutoff = 1e-10,
+        )
+        println("streaming_mpo_it rank: ", maxlinkdim(streaming_mpo_it))
+    end
 
     if use_gpu
         full_free_stream_fourier_mpo_it = cu(full_free_stream_fourier_mpo_it)
         half_free_stream_fourier_mpo_it = cu(half_free_stream_fourier_mpo_it)
-
-        full_free_stream_mpo_it = cu(full_free_stream_mpo_it)
-        half_free_stream_mpo_it = cu(half_free_stream_mpo_it)
 
         x_fourier_mpo_it = cu(x_fourier_mpo_it)
         x_inv_fourier_mpo_it = cu(x_inv_fourier_mpo_it)
@@ -368,18 +368,20 @@ function prepare_itensor_mpos(
 
         x_inv_v_fourier_mpo_it = cu(x_inv_v_fourier_mpo_it)
         v_inv_x_fourier_mpo_it = cu(v_inv_x_fourier_mpo_it)
+        if streaming_mpo_it !== nothing
+            streaming_mpo_it = cu(streaming_mpo_it)
+        end
     end
 
     return (
         half_free_stream_fourier = half_free_stream_fourier_mpo_it,
         full_free_stream_fourier = full_free_stream_fourier_mpo_it,
-        full_free_stream = full_free_stream_mpo_it,
-        half_free_stream = half_free_stream_mpo_it,
         x_fourier = x_fourier_mpo_it,
         x_inv_fourier = x_inv_fourier_mpo_it,
         v_fourier = v_fourier_mpo_it,
         v_inv_fourier = v_inv_fourier_mpo_it,
         x_inv_v_fourier = x_inv_v_fourier_mpo_it,
         v_inv_x_fourier = v_inv_x_fourier_mpo_it,
+        streaming = streaming_mpo_it,
     )
 end
