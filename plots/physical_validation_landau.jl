@@ -110,14 +110,14 @@ psi_mps_300 = h5open(p5_mps_path, "r") do file
 end
 tt_snapshot_300 = QuanticsTCI.TensorTrain(ITensors.cpu(psi_mps_300))
 f_vals_300 = [tt_snapshot_300(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
-clim_max = maximum((maximum(abs.(f_vals)), maximum(abs.(f_vals_150)), maximum(abs.(f_vals_300))))
-clim_min = minimum((minimum(abs.(f_vals)), minimum(abs.(f_vals_150)), minimum(abs.(f_vals_300))))
+clim_max = maximum((maximum(real.(f_vals)), maximum(real.(f_vals_150)), maximum(real.(f_vals_300))))
+clim_min = minimum((minimum(real.(f_vals)), minimum(real.(f_vals_150)), minimum(real.(f_vals_300))))
 println("Color limits: ", (clim_min, clim_max))
 
 p4 = heatmap(
     x_vals,
     v_vals,
-    abs.(f_vals);
+    real.(f_vals);
     legend = nothing,
     ylabel = L"v",
     title = L"(d)       $t = 0$",
@@ -131,7 +131,7 @@ p4 = heatmap(
 p5 = heatmap(
     x_vals,
     v_vals,
-    abs.(f_vals_150);
+    real.(f_vals_150);
     legend = nothing,
     xlabel = L"x",
     title = L"(e)       $t = 15$",
@@ -145,7 +145,7 @@ p5 = heatmap(
 p6 = heatmap(
     x_vals,
     v_vals,
-    abs.(f_vals_300);
+    real.(f_vals_300);
     legend = nothing,
     title = L"(f)       $t = 30$               $f(x,v)$",
     titlelocation = :left,
@@ -161,7 +161,7 @@ l = @layout [
     grid(1, 2){0.3h}
     grid(1, 3, widths = [0.29, 0.29, 0.42]){0.4h}
 ]
-plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 950), left_margin = 2mm)
+plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 950), left_margin = 2)
 
 # Save figure
 savefig(plt, "plots/paper_figures/physical_validation_landau.pdf")

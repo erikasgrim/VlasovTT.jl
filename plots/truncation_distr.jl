@@ -138,7 +138,7 @@ let panel_idx = 1
         p = heatmap(
             s.x_vals,
             s.v_vals,
-            abs.(s.f_vals);
+            real.(s.f_vals);
             xlabel = "",
             ylabel = is_right ? "" : L"v",
             yticks = is_right ? nothing : :auto,
@@ -156,7 +156,7 @@ let panel_idx = 1
         p = heatmap(
             s.x_vals,
             s.v_vals,
-            abs.(s.f_vals);
+            real.(s.f_vals);
             xlabel = L"x",
             ylabel = is_right ? "" : L"v",
             yticks = is_right ? nothing : :auto,
