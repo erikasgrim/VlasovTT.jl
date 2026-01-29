@@ -78,7 +78,7 @@ row2_limits = (min(positive_min(momentum_landau), positive_min(momentum_ts)),
     max(maximum(momentum_landau), maximum(momentum_ts)))
 
 p1 = plot(
-    ylabel = L"|\Delta E| / |E_0|",
+    ylabel = L"|E - E_0|/|E_0|",
     title = "(a)",
     titlelocation = :left,
     legend = nothing,
