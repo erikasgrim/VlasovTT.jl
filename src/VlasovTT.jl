@@ -34,6 +34,7 @@ export
     build_solver_mpos,
     prepare_itensor_mpos,
     electric_field_energy,
+    total_charge,
     total_charge_kv,
     kinetic_energy,
     total_momentum,
@@ -41,5 +42,6 @@ export
     electric_field_mode_energy,
     write_parameters,
     write_runtimes,
-    write_data
+    write_data,
+    abs2_mps
 end

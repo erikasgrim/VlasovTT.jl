@@ -90,3 +90,66 @@ function tt_to_mpo(tt::TCI.TensorTrain)
     end
     return TCI.TensorTrain(mpo_cores)
 end
+
+function abs2_mps(psi_mps::MPS; alg::String="naive", maxdim=nothing, cutoff=1e-8)
+    psi = ITensors.cpu(psi_mps)
+    N = length(psi)
+    N == 0 && return psi
+
+    sites = siteinds(psi)
+    orthogonalize!(psi, 1)
+
+    link_dims = N > 1 ? [dim(linkind(psi, i)) for i in 1:(N - 1)] : Int[]
+    new_links = N > 1 ? [Index(link_dims[i]^2, "Link,l=$(i)") for i in 1:(N - 1)] : Index[]
+
+    tensors = Vector{ITensor}(undef, N)
+    for i in 1:N
+        s = sites[i]
+
+        if i == 1
+            r = linkind(psi, i)
+            A_arr = Array(psi[i], s, r)
+            C_arr = Array{eltype(A_arr)}(undef, dim(s), dim(r)^2)
+            for sv in 1:dim(s)
+                slice = view(A_arr, sv, :)
+                C_arr[sv, :] = vec(LinearAlgebra.kron(slice, conj(slice)))
+            end
+            tensors[i] = ITensor(C_arr, s, new_links[i])
+        elseif i == N
+            l = linkind(psi, i - 1)
+            A_arr = Array(psi[i], l, s)
+            C_arr = Array{eltype(A_arr)}(undef, dim(l)^2, dim(s))
+            for sv in 1:dim(s)
+                slice = view(A_arr, :, sv)
+                C_arr[:, sv] = vec(LinearAlgebra.kron(slice, conj(slice)))
+            end
+            tensors[i] = ITensor(C_arr, new_links[i - 1], s)
+        else
+            l = linkind(psi, i - 1)
+            r = linkind(psi, i)
+            A_arr = Array(psi[i], l, s, r)
+            C_arr = Array{eltype(A_arr)}(undef, dim(l)^2, dim(s), dim(r)^2)
+            for sv in 1:dim(s)
+                slice = view(A_arr, :, sv, :)
+                C_arr[:, sv, :] = LinearAlgebra.kron(slice, conj(slice))
+            end
+            tensors[i] = ITensor(C_arr, new_links[i - 1], s, new_links[i])
+        end
+    end
+
+    if maxdim !== nothing && N > 1
+        for i in 2:N
+            left_inds = uniqueinds(tensors[i - 1], tensors[i])
+            phi = tensors[i - 1] * tensors[i]
+            U, S, V = svd(phi, left_inds; maxdim = maxdim, cutoff = cutoff)
+            tensors[i - 1] = U
+            tensors[i] = S * V
+        end
+    end
+
+    f_mps = MPS(tensors)
+    if maxdim !== nothing
+        truncate!(f_mps; maxdim = maxdim, cutoff = cutoff)
+    end
+    return f_mps
+end

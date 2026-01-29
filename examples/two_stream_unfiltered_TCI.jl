@@ -71,7 +71,7 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
     cutoff = config.cutoff
 
     # Build phase space grids and simulation parameters
-    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=false, v_lsb_first=true, unfoldingscheme=:interleaved)
+    phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax, x_lsb_first=false, v_lsb_first=true, unfoldingscheme=:separate)
     params = VlasovTT.SimulationParams(
         dt = dt,
         tolerance = TCI_tolerance,
@@ -122,7 +122,8 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
         end
     end
     ic_fn = two_stream_instability_ic(phase; A = 1e-2, v0 = .2, vt = 0.01, mode = 1)
-    tt, _, _ = build_initial_tt(ic_fn, R; tolerance = params.tolerance, initialpivots = pivots)
+    sqrt_ic_fn = quantics -> sqrt(ic_fn(quantics))
+    tt, _, _ = build_initial_tt(sqrt_ic_fn, R; tolerance = params.tolerance, initialpivots = pivots)
     println("Initial condition TT ranks: ", TCI.rank(tt))
 
     # Convert to ITensor MPS & MPOs
@@ -191,9 +192,23 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
             break
         end
 
-        # Renormalize psi to conserve charge (L1 norm)
-        charge = real(total_charge_kv(psi_mps, phase))
-        psi_mps .= psi_mps / charge * phase.Lx
+        alloc_psi_plot = @allocated begin
+            psi_plot = copy(psi_mps)
+            psi_plot = apply(itensor_mpos.v_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
+        end
+        println("step $(step) alloc psi_plot (bytes): ", alloc_psi_plot)
+        alloc_f_plot = @allocated begin
+            f_plot = abs2_mps(psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
+        end
+        println("step $(step) alloc f_plot (bytes): ", alloc_f_plot)
+
+        # Renormalize sqrt(f) so that total charge of f is conserved
+        charge = real(total_charge(f_plot, phase, observables_cache))
+        scale = sqrt(phase.Lx / charge)
+        psi_mps .= psi_mps * scale
+        psi_plot .= psi_plot * scale
+        f_plot .= f_plot * (scale^2)
+        charge *= scale^2
 
         n_digits = 12
         tci_time, mpo_time, step_time = timings
@@ -205,9 +220,6 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
         )
 
         elapsed_time = round(time() - loop_start_time; digits = n_digits)
-        
-        psi_plot = copy(psi_mps)
-        psi_plot = apply(itensor_mpos.v_inv_fourier, psi_plot; alg = params.alg, maxdim = maxrank, cutoff = params.cutoff)
         write_runtimes(
             step,
             round(tci_time, digits = n_digits),
@@ -224,54 +236,56 @@ function run_simulation(config::TwoStreamConfig; use_gpu::Bool = true, save_ever
             round(charge, digits=n_digits),
             round(real(electric_field_energy(ef_mps, phase)), digits=n_digits),
             round(real(ef_energy_first_mode), digits=n_digits),
-            round(real(kinetic_energy(psi_plot, phase, observables_cache)), digits=n_digits),
-            round(real(total_momentum(psi_plot, phase, observables_cache)), digits=n_digits),
+            round(real(kinetic_energy(f_plot, phase, observables_cache)), digits=n_digits),
+            round(real(total_momentum(f_plot, phase, observables_cache)), digits=n_digits),
             norm(psi_plot),
             maxlinkdim(psi_mps),
             elapsed_time,
             simulation_dir
         )
-
         if step == 1 || step % 50 == 0
             mps_path = joinpath(mps_dir, "psi_step$(step).h5")
             f = h5open(mps_path, "w")
-            write(f, "psi", ITensors.cpu(psi_plot))
+            write(f, "psi", ITensors.cpu(f_plot))
             close(f)
         end
 
         if step % save_every == 0 || step == 1 || step == nsteps
-            tt_snapshot = TCI.TensorTrain(ITensors.cpu(psi_plot))
-            f_vals = [
-                tt_snapshot(VlasovTT.origcoord_to_quantics_xv(phase, x, v))
-                for v in v_vals, x in x_vals
-            ]
-            Plots.savefig(
-                Plots.heatmap(
-                    x_vals,
-                    v_vals,
-                    abs.(f_vals);
-                    xlabel = "x",
-                    ylabel = "v",
-                    title = "t = $(round(step * params.dt, digits = 3))",
-                ),
-                "results/$simulation_name/figures/phase_space_step$(step).png",
-            )
+            alloc_snapshot = @allocated begin
+                tt_snapshot = TCI.TensorTrain(ITensors.cpu(f_plot))
+                f_vals = [
+                    tt_snapshot(VlasovTT.origcoord_to_quantics_xv(phase, x, v))
+                    for v in v_vals, x in x_vals
+                ]
+                Plots.savefig(
+                    Plots.heatmap(
+                        x_vals,
+                        v_vals,
+                        real.(f_vals);
+                        xlabel = "x",
+                        ylabel = "v",
+                        title = "t = $(round(step * params.dt, digits = 3))",
+                    ),
+                    "results/$simulation_name/figures/phase_space_step$(step).png",
+                )
 
-            ef_snapshot = TCI.TensorTrain(ITensors.cpu(ef_mps))
-            E_x_vals = [
-                real.(ef_snapshot(VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.x_grid, x), phase.x_lsb_first)))
-                for x in x_vals
-            ]
-            Plots.savefig(
-                Plots.plot(
-                    x_vals,
-                    E_x_vals;
-                    xlabel = "x",
-                    ylabel = "E(x)",
-                    title = "Electric Field at t = $(round(step * params.dt, digits = 3))",
-                ),
-                "results/$simulation_name/figures/electric_field_step$(step).png",
-            )
+                ef_snapshot = TCI.TensorTrain(ITensors.cpu(ef_mps))
+                E_x_vals = [
+                    real.(ef_snapshot(VlasovTT.maybe_reverse_bits(origcoord_to_quantics(phase.x_grid, x), phase.x_lsb_first)))
+                    for x in x_vals
+                ]
+                Plots.savefig(
+                    Plots.plot(
+                        x_vals,
+                        E_x_vals;
+                        xlabel = "x",
+                        ylabel = "E(x)",
+                        title = "Electric Field at t = $(round(step * params.dt, digits = 3))",
+                    ),
+                    "results/$simulation_name/figures/electric_field_step$(step).png",
+                )
+            end
+            println("step $(step) alloc snapshot (bytes): ", alloc_snapshot)
         end
     end
 
@@ -309,6 +323,6 @@ end
 
 run_simulation_sweep(
     parameter = :cutoff,
-    values = [1e-8],
-    sweep_name = "cutoff9",
+    values = [1e-9],
+    sweep_name = "sqrt_4",
 )

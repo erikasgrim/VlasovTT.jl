@@ -28,11 +28,13 @@ function strang_step_filtered_TCI!(
     params::SimulationParams,
 )
 
-    # Get electric field MPO
-    _, electric_field_mps = get_electric_field_mps_kv(
-        psi_mps,
+    # Get electric field MPO from f = |sqrt(f)|^2 in x-v space
+    psi_xv = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    f_mps = abs2_mps(psi_xv; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    _, electric_field_mps = get_electric_field_mps(
+        f_mps,
         full_poisson_mpo;
-        dv = sqrt(phase.M) * phase.dv,
+        dv = phase.dv,
         cutoff = params.cutoff,
         maxrank_ef = params.maxrank_ef,
         alg = params.alg,
@@ -156,16 +158,21 @@ function strang_step_unfiltered_TCI!(
 )   
     steptime_start = time()
 
-    # Get electric field MPO
-    _, electric_field_mps = get_electric_field_mps_kv(
-        psi_mps,
+    # Get electric field MPO from f = |sqrt(f)|^2 in x-v space
+    psi_xv = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    f_mps = abs2_mps(psi_xv; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    _, electric_field_mps = get_electric_field_mps(
+        f_mps,
         full_poisson_mpo;
-        dv = sqrt(phase.M) * phase.dv,
+        dv = phase.dv,
         cutoff = params.cutoff,
         maxrank_ef = params.maxrank_ef,
         alg = params.alg,
         unfoldingscheme = phase.unfoldingscheme,
     )
+
+    println(time() - steptime_start, " seconds to compute electric field MPO")
+    println("")
 
     electric_field_tt = TCI.TensorTrain(ITensors.cpu(electric_field_mps))
     psi_tt = TCI.TensorTrain(ITensors.cpu(psi_mps))
@@ -306,11 +313,13 @@ function strang_step_filtered_RK4!(
     return_field::Bool = false,
 )
 
-    # Get electric field MPO
-    _, electric_field_mps = get_electric_field_mps_kv(
-        psi_mps,
+    # Get electric field MPO from f = |sqrt(f)|^2 in x-v space
+    psi_xv = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    f_mps = abs2_mps(psi_xv; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    _, electric_field_mps = get_electric_field_mps(
+        f_mps,
         full_poisson_mpo;
-        dv = sqrt(phase.M) * phase.dv,
+        dv = phase.dv,
         cutoff = params.cutoff,
         maxrank_ef = params.maxrank_ef,
         alg = params.alg,
@@ -384,11 +393,13 @@ function strang_step_unfiltered_RK4!(
     return_field::Bool = false,
 )
 
-    # Get electric field MPO
-    _, electric_field_mps = get_electric_field_mps_kv(
-        psi_mps,
+    # Get electric field MPO from f = |sqrt(f)|^2 in x-v space
+    psi_xv = apply(v_inv_fourier_mpo_it, psi_mps; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    f_mps = abs2_mps(psi_xv; alg = params.alg, maxdim = params.maxrank, cutoff = params.cutoff)
+    _, electric_field_mps = get_electric_field_mps(
+        f_mps,
         full_poisson_mpo;
-        dv = sqrt(phase.M) * phase.dv,
+        dv = phase.dv,
         cutoff = params.cutoff,
         maxrank_ef = params.maxrank_ef,
         alg = params.alg,
