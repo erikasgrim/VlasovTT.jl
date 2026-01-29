@@ -1,0 +1,18 @@
+Simulation Parameters:
+dt = 0.1
+tolerance = 1.0e-8
+SVD_tolerance = 1.0e-8
+maxrank = 200
+maxrank_ef = 32
+k_cut = 64
+beta = 2.0
+v0 = 0.0
+precombine_streaming_mpo = false
+Grid Parameters:
+R = 10
+xmin = -1.0266642658790173
+xmax = 1.0266642658790173
+vmin = -0.6
+vmax = 0.6
+
+false false, i.e. final results config
