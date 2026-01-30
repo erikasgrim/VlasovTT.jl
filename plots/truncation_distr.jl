@@ -6,6 +6,7 @@ using ITensors
 using LaTeXStrings
 using QuanticsGrids
 using QuanticsTCI
+using Printf
 using VlasovTT: PhaseSpaceGrids, read_data
 
 include(joinpath("plot_defaults.jl"))
@@ -107,6 +108,21 @@ end
 landau_sets = [merge(s, load_distribution(s.path)) for s in landau_sets]
 ts_sets = [merge(s, load_distribution(s.path)) for s in ts_sets]
 
+landau_clim = (
+    minimum(minimum(real.(s.f_vals)) for s in landau_sets),
+    maximum(maximum(real.(s.f_vals)) for s in landau_sets),
+)
+ts_clim = (
+    minimum(minimum(real.(s.f_vals)) for s in ts_sets),
+    maximum(maximum(real.(s.f_vals)) for s in ts_sets),
+)
+landau_denom = abs(landau_clim[1]) + abs(landau_clim[2])
+landau_neg_frac = landau_denom == 0 ? 0.5 : abs(landau_clim[1]) / landau_denom
+landau_colormap = cgrad(base_colormap, [0.0, landau_neg_frac, 1.0])
+ts_denom = abs(ts_clim[1]) + abs(ts_clim[2])
+ts_neg_frac = ts_denom == 0 ? 0.5 : abs(ts_clim[1]) / ts_denom
+ts_colormap = cgrad(base_colormap, [0.0, ts_neg_frac, 1.0])
+
 plots = Plots.Plot[]
 panel_labels = ["(a)", "(b)", "(c)", "(d)"]
 cutoff_labels = Dict(1e-7 => "10^{-7}", 1e-10 => "10^{-10}")
@@ -125,15 +141,10 @@ function cutoff_label(cutoff)
 end
 let panel_idx = 1
     for (i, s) in enumerate(landau_sets)
-        title = latexstring("$(panel_labels[panel_idx]) \$\\epsilon = $(cutoff_label(s.cutoff))\$")
+        title = latexstring("$(panel_labels[panel_idx])           \$\\epsilon = $(cutoff_label(s.cutoff))\$")
         panel_idx += 1
         is_right = i == 2
         f_vals_real = real.(s.f_vals)
-        clim_min = minimum(f_vals_real)
-        clim_max = maximum(f_vals_real)
-        denom = abs(clim_min) + abs(clim_max)
-        neg_frac = denom == 0 ? 0.5 : abs(clim_min) / denom
-        colormap = cgrad(base_colormap, [0.0, neg_frac, 1.0])
         p = heatmap(
             s.x_vals,
             s.v_vals,
@@ -143,23 +154,18 @@ let panel_idx = 1
             yticks = is_right ? nothing : :auto,
             title = title,
             titlelocation = :left,
-            clim = (clim_min, clim_max),
-            color = colormap,
-            colorbar = true,
+            clim = landau_clim,
+            color = landau_colormap,
+            colorbar = false,
         )
         push!(plots, p)
     end
 
     for (i, s) in enumerate(ts_sets)
-        title = latexstring("$(panel_labels[panel_idx]) \$\\epsilon = $(cutoff_label(s.cutoff))\$")
+        title = latexstring("$(panel_labels[panel_idx])           \$\\epsilon = $(cutoff_label(s.cutoff))\$")
         panel_idx += 1
         is_right = i == 2
         f_vals_real = real.(s.f_vals)
-        clim_min = minimum(f_vals_real)
-        clim_max = maximum(f_vals_real)
-        denom = abs(clim_min) + abs(clim_max)
-        neg_frac = denom == 0 ? 0.5 : abs(clim_min) / denom
-        colormap = cgrad(base_colormap, [0.0, neg_frac, 1.0])
         p = heatmap(
             s.x_vals,
             s.v_vals,
@@ -169,17 +175,77 @@ let panel_idx = 1
             yticks = is_right ? nothing : :auto,
             title = title,
             titlelocation = :left,
-            clim = (clim_min, clim_max),
-            color = colormap,
-            colorbar = true,
+            clim = ts_clim,
+            color = ts_colormap,
+            colorbar = false,
         )
         push!(plots, p)
     end
 end
 
+landau_colorbar_vals = collect(range(landau_clim[1], landau_clim[2]; length = 200))
+landau_tick_step = 0.1
+landau_tick_vals = collect(landau_clim[1]:landau_tick_step:landau_clim[2])
+if !isempty(landau_tick_vals) && last(landau_tick_vals) == landau_clim[2]
+    landau_tick_vals = landau_tick_vals[1:end-1]
+end
+landau_tick_labels = copy(string.(round.(landau_tick_vals; digits = 1)))
+if !isempty(landau_tick_labels)
+    landau_tick_labels[1] = @sprintf("%.1e", landau_tick_vals[1])
+end
+landau_colorbar_ticks = (landau_tick_vals, landau_tick_labels)
+p_landau_colorbar = heatmap(
+    [1.0],
+    landau_colorbar_vals,
+    [landau_colorbar_vals;;];
+    color = landau_colormap,
+    clim = landau_clim,
+    colorbar = false,
+    title = L"f(x,v)",
+    titlelocation = :center,
+    xaxis = false,
+    yaxis = true,
+    ymirror = true,
+    yticks = landau_colorbar_ticks,
+    ticks = :y,
+    ytick_direction = :out,
+)
+
+ts_colorbar_vals = collect(range(ts_clim[1], ts_clim[2]; length = 200))
+ts_tick_step = 5.0
+ts_tick_vals = unique([ts_clim[1], -10.0, 0.0, 10.0, 20.0, 30.0])
+ts_tick_vals = filter(v -> v >= ts_clim[1] && v <= ts_clim[2], ts_tick_vals)
+ts_tick_vals = sort(ts_tick_vals)
+ts_colorbar_ticks = (ts_tick_vals, string.(round.(ts_tick_vals; digits = 1)))
+p_ts_colorbar = heatmap(
+    [1.0],
+    ts_colorbar_vals,
+    [ts_colorbar_vals;;];
+    color = ts_colormap,
+    clim = ts_clim,
+    colorbar = false,
+    title = L"f(x,v)",
+    titlelocation = :center,
+    xaxis = false,
+    yaxis = true,
+    ymirror = true,
+    yticks = ts_colorbar_ticks,
+    ticks = :y,
+    ytick_direction = :out,
+)
+
+layout_spec = @layout [
+    grid(1, 2) cbar_top{0.05w}
+    grid(1, 2) cbar_bottom{0.05w}
+]
 plt = plot(
-    plots...;
-    layout = (2, 2),
+    plots[1],
+    plots[2],
+    p_landau_colorbar,
+    plots[3],
+    plots[4],
+    p_ts_colorbar;
+    layout = layout_spec,
     left_margin = 2mm,
     bottom_margin = 2mm,
     size = (833, 650),

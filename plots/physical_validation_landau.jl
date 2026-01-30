@@ -6,6 +6,7 @@ using ITensorMPS
 using ITensors
 using QuanticsGrids
 using QuanticsTCI
+using Printf
 using VlasovTT: read_data, PhaseSpaceGrids
 
 include(joinpath("plot_defaults.jl"))
@@ -122,6 +123,16 @@ println("Color limits: ", (clim_min, clim_max))
 denom = abs(clim_min) + abs(clim_max)
 neg_frac = denom == 0 ? 0.5 : abs(clim_min) / denom
 colormap = cgrad(base_colormap, [0.0, neg_frac, 1.0])
+landau_tick_step = 0.1
+landau_tick_vals = collect(clim_min:landau_tick_step:clim_max)
+if !isempty(landau_tick_vals) && last(landau_tick_vals) == clim_max
+    landau_tick_vals = landau_tick_vals[1:end-1]
+end
+landau_tick_labels = copy(string.(round.(landau_tick_vals; digits = 1)))
+if !isempty(landau_tick_labels)
+    landau_tick_labels[1] = @sprintf("%.1e", landau_tick_vals[1])
+end
+landau_colorbar_ticks = (landau_tick_vals, landau_tick_labels)
 
 p4 = heatmap(
     x_vals,
@@ -158,22 +169,41 @@ p6 = heatmap(
     v_vals,
     f_vals_300_real;
     legend = nothing,
-    title = L"(f)       $t = 30$               $f(x,v)$",
+    xlabel = L"x",
+    title = L"(f)       $t = 30$",
     titlelocation = :left,
     xticks = landau_xticks,
     yticks = nothing,
     clim = (clim_min, clim_max),
     color = colormap,
-    colorbar = :right,
+    colorbar = false,
     #colorbar_title = L"f(x,v)",
+)
+
+p_colorbar_vals = collect(range(clim_min, clim_max; length = 200))
+p_colorbar = heatmap(
+    [1.0],
+    p_colorbar_vals,
+    [p_colorbar_vals;;];
+    color = colormap,
+    clim = (clim_min, clim_max),
+    colorbar = false,
+    title = L"f(x,v)",
+    titlelocation = :center,
+    xaxis = false,
+    yaxis = true,
+    ymirror = true,
+    yticks = landau_colorbar_ticks,
+    ticks = :y,
+    ytick_direction = :out,
 )
 
 l = @layout [
     grid(1, 1){0.3h}
     grid(1, 2){0.3h}
-    grid(1, 3, widths = [0.29, 0.29, 0.42]){0.4h}
+    grid(1, 4, widths = [0.32, 0.32, 0.32, 0.04]){0.4h}
 ]
-plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 950), left_margin = 2mm)
+plt = plot(p1, p2, p3, p4, p5, p6, p_colorbar; layout = l, size = (833, 950), left_margin = 2mm, right_margin = 3mm)
 
 # Save figure
 savefig(plt, "plots/paper_figures/physical_validation_landau.pdf")

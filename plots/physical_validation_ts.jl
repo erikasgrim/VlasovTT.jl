@@ -11,7 +11,7 @@ include(joinpath("plot_defaults.jl"))
 PlotDefaults.apply!()
 #pyplot()
 
-base_colormap = :RdBu
+base_colormap = cgrad(:RdBu, rev = true)
 resolution = 200
 
 two_stream_ref = "final_results/two_stream/sweep_cutoff/case_004"
@@ -134,13 +134,18 @@ clim_max = maximum((maximum(f_vals_real), maximum(f_vals_150_real), maximum(f_va
 println("Color limits: ", (clim_min, clim_max))
 denom = abs(clim_min) + abs(clim_max)
 neg_frac = denom == 0 ? 0.5 : abs(clim_min) / denom
-colormap = cgrad(base_colormap, [0.0, neg_frac, 1.0], rev = true)
+colormap = cgrad(base_colormap, [0.0, neg_frac, 1.0])
+ts_tick_vals = unique([clim_min, 0.0, 5.0, 10.0, 15.0, 20.0])
+ts_tick_vals = filter(v -> v >= clim_min && v <= clim_max, ts_tick_vals)
+ts_tick_vals = sort(ts_tick_vals)
+ts_colorbar_ticks = (ts_tick_vals, string.(round.(ts_tick_vals; digits = 1)))
 
 p4 = heatmap(
     x_vals,
     v_vals,
     f_vals_real;
     legend = nothing,
+        xlabel = L"x",
     ylabel = L"v",
     title = L"(d)       $t = 0$",
     titlelocation = :left,
@@ -171,22 +176,41 @@ p6 = heatmap(
     v_vals,
     f_vals_300_real;
     legend = nothing,
-    title = L"(f)       $t = 20$               $f(x,v)$",
+    xlabel = L"x",
+    title = L"(f)       $t = 20$",
     titlelocation = :left,
     xticks = two_stream_xticks,
     yticks = nothing,
     clim = (clim_min, clim_max),
     color = colormap,
-    colorbar = :right,
+    colorbar = false,
     #colorbar_title = L"f(x,v)",
+)
+
+p_colorbar_vals = collect(range(clim_min, clim_max; length = 200))
+p_colorbar = heatmap(
+    [1.0],
+    p_colorbar_vals,
+    [p_colorbar_vals;;];
+    color = colormap,
+    clim = (clim_min, clim_max),
+    colorbar = false,
+    title = L"f(x,v)",
+    titlelocation = :center,
+    xaxis = false,
+    yaxis = true,
+    ymirror = true,
+    yticks = ts_colorbar_ticks,
+    ticks = :y,
+    ytick_direction = :out,
 )
 
 l = @layout [
     grid(1, 1){0.3h}
     grid(1, 2){0.3h}
-    grid(1, 3, widths = [0.3, 0.3, 0.4]){0.4h}
+    grid(1, 4, widths = [0.32, 0.32, 0.32, 0.04]){0.4h}
 ]
-plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 950), left_margin = 2mm)
+plt = plot(p1, p2, p3, p4, p5, p6, p_colorbar; layout = l, size = (833, 950), left_margin = 2mm, right_margin = 2mm)
 
 # Save figure
 savefig(plt, "plots/paper_figures/physical_validation_ts.pdf")
