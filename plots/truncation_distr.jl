@@ -11,6 +11,8 @@ using VlasovTT: PhaseSpaceGrids, read_data
 include(joinpath("plot_defaults.jl"))
 PlotDefaults.apply!()
 
+base_colormap = cgrad(:RdBu, rev = true)
+
 landau_dir = "final_results/landau_damping/sweep_cutoff"
 ts_dir = "final_results/two_stream/sweep_cutoff"
 
@@ -105,15 +107,6 @@ end
 landau_sets = [merge(s, load_distribution(s.path)) for s in landau_sets]
 ts_sets = [merge(s, load_distribution(s.path)) for s in ts_sets]
 
-landau_clim = (
-    minimum(minimum(abs.(s.f_vals)) for s in landau_sets),
-    maximum(maximum(abs.(s.f_vals)) for s in landau_sets),
-)
-ts_clim = (
-    minimum(minimum(abs.(s.f_vals)) for s in ts_sets),
-    maximum(maximum(abs.(s.f_vals)) for s in ts_sets),
-)
-
 plots = Plots.Plot[]
 panel_labels = ["(a)", "(b)", "(c)", "(d)"]
 cutoff_labels = Dict(1e-7 => "10^{-7}", 1e-10 => "10^{-10}")
@@ -135,15 +128,23 @@ let panel_idx = 1
         title = latexstring("$(panel_labels[panel_idx]) \$\\epsilon = $(cutoff_label(s.cutoff))\$")
         panel_idx += 1
         is_right = i == 2
+        f_vals_real = real.(s.f_vals)
+        clim_min = minimum(f_vals_real)
+        clim_max = maximum(f_vals_real)
+        denom = abs(clim_min) + abs(clim_max)
+        neg_frac = denom == 0 ? 0.5 : abs(clim_min) / denom
+        colormap = cgrad(base_colormap, [0.0, neg_frac, 1.0])
         p = heatmap(
             s.x_vals,
             s.v_vals,
-            real.(s.f_vals);
+            f_vals_real;
             xlabel = "",
             ylabel = is_right ? "" : L"v",
             yticks = is_right ? nothing : :auto,
             title = title,
             titlelocation = :left,
+            clim = (clim_min, clim_max),
+            color = colormap,
             colorbar = true,
         )
         push!(plots, p)
@@ -153,15 +154,23 @@ let panel_idx = 1
         title = latexstring("$(panel_labels[panel_idx]) \$\\epsilon = $(cutoff_label(s.cutoff))\$")
         panel_idx += 1
         is_right = i == 2
+        f_vals_real = real.(s.f_vals)
+        clim_min = minimum(f_vals_real)
+        clim_max = maximum(f_vals_real)
+        denom = abs(clim_min) + abs(clim_max)
+        neg_frac = denom == 0 ? 0.5 : abs(clim_min) / denom
+        colormap = cgrad(base_colormap, [0.0, neg_frac, 1.0])
         p = heatmap(
             s.x_vals,
             s.v_vals,
-            real.(s.f_vals);
+            f_vals_real;
             xlabel = L"x",
             ylabel = is_right ? "" : L"v",
             yticks = is_right ? nothing : :auto,
             title = title,
             titlelocation = :left,
+            clim = (clim_min, clim_max),
+            color = colormap,
             colorbar = true,
         )
         push!(plots, p)

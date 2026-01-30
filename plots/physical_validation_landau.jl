@@ -1,4 +1,5 @@
 using Plots
+using Plots.PlotMeasures
 using LaTeXStrings
 using HDF5
 using ITensorMPS
@@ -9,6 +10,8 @@ using VlasovTT: read_data, PhaseSpaceGrids
 
 include(joinpath("plot_defaults.jl"))
 PlotDefaults.apply!()
+
+base_colormap = cgrad(:RdBu, rev = true)
 
 landau_ref = "final_results/landau_damping/sweep_cutoff/case_004"
 landau_data = joinpath(landau_ref, "data.csv")
@@ -110,14 +113,20 @@ psi_mps_300 = h5open(p5_mps_path, "r") do file
 end
 tt_snapshot_300 = QuanticsTCI.TensorTrain(ITensors.cpu(psi_mps_300))
 f_vals_300 = [tt_snapshot_300(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
-clim_max = maximum((maximum(real.(f_vals)), maximum(real.(f_vals_150)), maximum(real.(f_vals_300))))
-clim_min = minimum((minimum(real.(f_vals)), minimum(real.(f_vals_150)), minimum(real.(f_vals_300))))
+f_vals_real = real.(f_vals)
+f_vals_150_real = real.(f_vals_150)
+f_vals_300_real = real.(f_vals_300)
+clim_max = maximum((maximum(f_vals_real), maximum(f_vals_150_real), maximum(f_vals_300_real)))
+clim_min = minimum((minimum(f_vals_real), minimum(f_vals_150_real), minimum(f_vals_300_real)))
 println("Color limits: ", (clim_min, clim_max))
+denom = abs(clim_min) + abs(clim_max)
+neg_frac = denom == 0 ? 0.5 : abs(clim_min) / denom
+colormap = cgrad(base_colormap, [0.0, neg_frac, 1.0])
 
 p4 = heatmap(
     x_vals,
     v_vals,
-    real.(f_vals);
+    f_vals_real;
     legend = nothing,
     ylabel = L"v",
     title = L"(d)       $t = 0$",
@@ -125,13 +134,14 @@ p4 = heatmap(
     xticks = landau_xticks,
     yticks = landau_yticks,
     clim = (clim_min, clim_max),
+    color = colormap,
     colorbar = false,
 )
 
 p5 = heatmap(
     x_vals,
     v_vals,
-    real.(f_vals_150);
+    f_vals_150_real;
     legend = nothing,
     xlabel = L"x",
     title = L"(e)       $t = 15$",
@@ -139,19 +149,21 @@ p5 = heatmap(
     xticks = landau_xticks,
     yticks = nothing,
     clim = (clim_min, clim_max),
+    color = colormap,
     colorbar = false,
 )
 
 p6 = heatmap(
     x_vals,
     v_vals,
-    real.(f_vals_300);
+    f_vals_300_real;
     legend = nothing,
     title = L"(f)       $t = 30$               $f(x,v)$",
     titlelocation = :left,
     xticks = landau_xticks,
     yticks = nothing,
     clim = (clim_min, clim_max),
+    color = colormap,
     colorbar = :right,
     #colorbar_title = L"f(x,v)",
 )
@@ -161,7 +173,7 @@ l = @layout [
     grid(1, 2){0.3h}
     grid(1, 3, widths = [0.29, 0.29, 0.42]){0.4h}
 ]
-plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 950), left_margin = 2)
+plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 950), left_margin = 2mm)
 
 # Save figure
 savefig(plt, "plots/paper_figures/physical_validation_landau.pdf")

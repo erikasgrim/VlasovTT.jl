@@ -9,6 +9,10 @@ using VlasovTT: read_data, PhaseSpaceGrids
 
 include(joinpath("plot_defaults.jl"))
 PlotDefaults.apply!()
+#pyplot()
+
+base_colormap = :RdBu
+resolution = 200
 
 two_stream_ref = "final_results/two_stream/sweep_cutoff/case_004"
 two_stream_data = joinpath(two_stream_ref, "data.csv")
@@ -104,8 +108,8 @@ end
 R, xmin, xmax, vmin, vmax = read_grid_params(joinpath(two_stream_ref, "simulation_params.txt"))
 phase = PhaseSpaceGrids(R, xmin, xmax, vmin, vmax)
 
-x_vals = range(phase.xmin, phase.xmax; length = 400)
-v_vals = range(phase.vmin, phase.vmax; length = 400)
+x_vals = range(phase.xmin, phase.xmax; length = resolution)
+v_vals = range(phase.vmin, phase.vmax; length = resolution)
 tt_snapshot = QuanticsTCI.TensorTrain(ITensors.cpu(psi_mps))
 f_vals = [tt_snapshot(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
 
@@ -122,14 +126,20 @@ psi_mps_300 = h5open(p5_mps_path, "r") do file
 end
 tt_snapshot_300 = QuanticsTCI.TensorTrain(ITensors.cpu(psi_mps_300))
 f_vals_300 = [tt_snapshot_300(origcoord_to_quantics(phase.x_v_grid, (x, v))) for v in v_vals, x in x_vals]
-clim_max = maximum((maximum(real.(f_vals)), maximum(real.(f_vals_150)), maximum(real.(f_vals_300))))
-clim_min = minimum((minimum(real.(f_vals)), minimum(real.(f_vals_150)), minimum(real.(f_vals_300))))
+f_vals_real = real.(f_vals)
+f_vals_150_real = real.(f_vals_150)
+f_vals_300_real = real.(f_vals_300)
+clim_min = minimum((minimum(f_vals_real), minimum(f_vals_150_real), minimum(f_vals_300_real)))
+clim_max = maximum((maximum(f_vals_real), maximum(f_vals_150_real), maximum(f_vals_300_real)))
 println("Color limits: ", (clim_min, clim_max))
+denom = abs(clim_min) + abs(clim_max)
+neg_frac = denom == 0 ? 0.5 : abs(clim_min) / denom
+colormap = cgrad(base_colormap, [0.0, neg_frac, 1.0], rev = true)
 
 p4 = heatmap(
     x_vals,
     v_vals,
-    real.(f_vals);
+    f_vals_real;
     legend = nothing,
     ylabel = L"v",
     title = L"(d)       $t = 0$",
@@ -137,13 +147,14 @@ p4 = heatmap(
     xticks = two_stream_xticks,
     yticks = two_stream_yticks,
     clim = (clim_min, clim_max),
+    color = colormap,
     colorbar = false,
 )
 
 p5 = heatmap(
     x_vals,
     v_vals,
-    real.(f_vals_150);
+    f_vals_150_real;
     legend = nothing,
     xlabel = L"x",
     title = L"(e)       $t = 15$",
@@ -151,19 +162,21 @@ p5 = heatmap(
     xticks = two_stream_xticks,
     yticks = nothing,
     clim = (clim_min, clim_max),
+    color = colormap,
     colorbar = false,
 )
 
 p6 = heatmap(
     x_vals,
     v_vals,
-    real.(f_vals_300);
+    f_vals_300_real;
     legend = nothing,
     title = L"(f)       $t = 20$               $f(x,v)$",
     titlelocation = :left,
     xticks = two_stream_xticks,
     yticks = nothing,
     clim = (clim_min, clim_max),
+    color = colormap,
     colorbar = :right,
     #colorbar_title = L"f(x,v)",
 )
