@@ -76,7 +76,7 @@ p3 = plot(
     landau_data.times[2:end],
     energy_rel[2:end],
     xlabel = L"t\ [\omega_{pe}^{-1}]",
-    ylabel = L"|\Delta E|/|E_0|",
+    ylabel = L"|\Delta E - E_0|/|E_0|",
     ylims = y_limits,
     yaxis = :log10,
     linestyle = :solid,

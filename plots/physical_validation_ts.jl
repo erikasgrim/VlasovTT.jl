@@ -87,7 +87,7 @@ p3 = plot(
     two_stream_data.times[2:end],
     energy_rel[2:end],
     xlabel = L"t\ [\omega_{pe}^{-1}]",
-    ylabel = L"|\Delta E|/|E_0|",
+    ylabel = L"|\Delta E - E_0|/|E_0|",
     ylims = y_limits,
     yaxis = :log10,
     linestyle = :solid,
@@ -186,7 +186,7 @@ l = @layout [
     grid(1, 2){0.3h}
     grid(1, 3, widths = [0.3, 0.3, 0.4]){0.4h}
 ]
-plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 950))
+plt = plot(p1, p2, p3, p4, p5, p6; layout = l, size = (833, 950), left_margin = 2mm)
 
 # Save figure
 savefig(plt, "plots/paper_figures/physical_validation_ts.pdf")
