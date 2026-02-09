@@ -1,6 +1,6 @@
 ![Algorithm schematic](docs/figures/algorithm_schematic.png)
 
-# VlasovTT.jl
+# VlasovTT.jl:  Tensor-Train Vlasov-Poisson Simulation in Julia
 
 VlasovTT.jl is a Julia project for simulating 1D1V Vlasov-Poisson dynamics with tensor-train (TT/MPS) representations. The code combines quantics grids, tensor cross interpolation (TCI), and Strang splitting to evolve kinetic plasma problems such as linear Landau damping and the two-stream instability.
 
