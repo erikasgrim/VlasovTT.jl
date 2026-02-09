@@ -69,9 +69,8 @@ Notes:
 
 ## Reference
 
-The code, algorithms and results in this code repository are presented in the following preprint:
+The code, algorithms and results in this code repository are presented in the paper *Tensor-Network Compression for Fully Spectral Vlasov–Poisson Simulation*. An arXiv preprint is available at: TODO.
 
-- arXiv: TBD
 
 ## License
 
