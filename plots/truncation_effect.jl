@@ -51,7 +51,7 @@ ts_sets = read_sweep(ts_dir)
 
 p1 = plot(
     xlabel = "",
-    ylabel = L"\mathcal{E}_1",
+    ylabel = L"\mathcal{E}_{\mathrm{field}}^{(1)}(t)",
     yaxis = :log10,
     title = "(a)",
     titlelocation = :left,

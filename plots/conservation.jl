@@ -41,7 +41,7 @@ function read_sweep(dir)
                 break
             end
         end
-        push!(datasets, (name = label, data = read_data(data_path)))
+        push!(datasets, (name = label, data = read_data(data_path), data_path = data_path))
     end
     return datasets
 end
@@ -63,6 +63,14 @@ function drop_first(times, values)
     return times[2:end], values[2:end]
 end
 
+function print_last_value(graph_label, series_label, data_path, times, values)
+    if isempty(times) || isempty(values)
+        println("[$(graph_label)] $(series_label) from $(data_path): no data")
+        return
+    end
+    println("[$(graph_label)] $(series_label) from $(data_path): t=$(last(times)), value=$(last(values))")
+end
+
 landau_sets = read_sweep(landau_dir)
 ts_sets = read_sweep(ts_dir)
 positive_min(values) = minimum(filter(>(0), values))
@@ -78,7 +86,7 @@ row2_limits = (min(positive_min(momentum_landau), positive_min(momentum_ts)),
     max(maximum(momentum_landau), maximum(momentum_ts)))
 
 p1 = plot(
-    ylabel = L"|E - E_0|/|E_0|",
+    ylabel = L"|\mathcal{E}(t) - \mathcal{E}(0)| / |\mathcal{E}(0)|",
     title = "(a)",
     titlelocation = :left,
     legend = nothing,
@@ -90,6 +98,7 @@ p1 = plot(
 for s in landau_sets
     times, values = drop_first(s.data.times, rel_dev(s.data.total_energy))
     plot!(p1, times, values; label = s.name)
+    print_last_value("a: landau energy", s.name, s.data_path, times, values)
 end
 
 p2 = plot(
@@ -103,11 +112,12 @@ p2 = plot(
 for s in ts_sets
     times, values = drop_first(s.data.times, rel_dev(s.data.total_energy))
     plot!(p2, times, values; label = s.name)
+    print_last_value("b: two-stream energy", s.name, s.data_path, times, values)
 end
 
 p3 = plot(
     xlabel = L"t\ [\omega_{pe}^{-1}]",
-    ylabel = L"|\Delta P|",
+    ylabel = L"|P|",
     title = "(c)",
     titlelocation = :left,
     legend = nothing,
@@ -119,6 +129,7 @@ p3 = plot(
 for s in landau_sets
     times, values = drop_first(s.data.times, abs_dev(s.data.momentum))
     plot!(p3, times, values; label = s.name)
+    print_last_value("c: landau momentum", s.name, s.data_path, times, values)
 end
 
 p4 = plot(
@@ -133,6 +144,7 @@ p4 = plot(
 for s in ts_sets
     times, values = drop_first(s.data.times, abs_dev(s.data.momentum))
     plot!(p4, times, values; label = s.name)
+    print_last_value("d: two-stream momentum", s.name, s.data_path, times, values)
 end
 
 plt = plot(p1, p2, p3, p4; layout = (2, 2), link = :x, bottom_margin = 2mm, size = (833, 600))
